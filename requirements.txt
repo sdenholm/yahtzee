@@ -1,0 +1,4 @@
+PyYAML
+numpy~=1.18.2
+PyQt5==5.13.1
+pandas~=1.0.3
