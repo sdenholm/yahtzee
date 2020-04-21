@@ -12,7 +12,7 @@ import numpy as np
 
 from concurrent import futures
 
-from yahtzee.model import mM
+from yahtzee.model import Game
 from yahtzee.gui import PyQtGUI
 
 
@@ -64,11 +64,12 @@ class Controller:
     self.configFileLoc = configFileLoc
   
     # load the config data from the config file
-    self.configData = Controller._loadConfigFile(configFileLoc)
+    #self.configData = Controller._loadConfigFile(configFileLoc)
 
     # create a GUI
-    self.model = None
-    self.gui   = PyQtGUI(self, self.model)
+    self.game = Game()
+    self.game.addPlayer("Stewart")
+    self.gui  = PyQtGUI(self, self.game)
     
     
   def run(self):

@@ -9,7 +9,7 @@ try:
   import yaml
   import numpy
   import PyQt5
-  import scipy
+  #import scipy
 except ImportError as err:
   print("ERROR: Importing failed. Run 'pip3 install -r requirements.txt' to install requirements")
   raise err
