@@ -69,8 +69,20 @@ class Controller:
     # create a GUI
     self.game = Game()
     self.game.addPlayer("Stewart")
+    self.game.addPlayer("Kali")
     self.gui  = PyQtGUI(self, self.game)
     
+  
+  def aboutText(self, textFormat="richtext"):
     
+    if textFormat == "richtext":
+      return "Yahtzee, yo!"
+  
   def run(self):
     self.gui.run()
+    
+  def rollDice(self):
+    print("rollDice")
+    
+  def holdDice(self, diceNum):
+    print("holdDice", "-", diceNum)
