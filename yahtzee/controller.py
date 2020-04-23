@@ -70,6 +70,9 @@ class Controller:
     self.game = Game()
     self.game.addPlayer("Stewart")
     self.game.addPlayer("Kali")
+
+    self.game.getPlayer("Stewart").getScorecard().setScore("Ones", 4)
+    
     self.gui  = PyQtGUI(self, self.game)
     
   
@@ -82,7 +85,72 @@ class Controller:
     self.gui.run()
     
   def rollDice(self):
-    print("rollDice")
+    """
+    # Roll the dice. Used to:
+    #  -start the game
+    #  -start a player's turn
+    #  -roll again during a player's turn
+    #
+    """
     
-  def holdDice(self, diceNum):
-    print("holdDice", "-", diceNum)
+    ###########################################################################
+    # CHECKS
+    ###########################################################################
+    
+    # if the game has ended
+    if self.game.getGameStatus() == Game.STATUS.FINISHED:
+      self.gui.notifyStatus("Game has ended")
+      return
+    
+    # if we don't have any rolls left
+    if self.game.getRemainingRolls() < 1:
+      self.gui.notifyStatus("No rolls remaining")
+      return
+    
+    # if all the dice are held
+    if len(self.game.getHeldDice()) == self.game.getNumberOfDice():
+      self.gui.notifyStatus("Cannot roll if all dice are held")
+      return
+
+
+    ###########################################################################
+    
+    # get the current player
+    currentPlayer = self.game.getCurrentPlayer()
+    
+    # make sure the game is set as running
+    self.game.setStatus(Game.STATUS.RUNNING)
+    
+    # roll the free dice
+    self.game.rollDice()
+    
+    # update the gui on the current dice values
+    self.gui.updateDice(self.game.getDiceValues())
+    
+    # update the gui on the current scorecard possibilities
+    self.gui.updatePossibleScorecard([currentPlayer])
+    
+  def toggleDiceHeldStatus(self, diceNum):
+    
+    # hold a free die, or free a held die
+    self.game.setDiceHold(diceNum, diceNum not in self.game.getHeldDice())
+    
+    # let the GUI know which die are held
+    self.gui.updateHeldDice(self.game.getHeldDice())
+
+  
+  def score(self, rowName):
+    """ Submit a score based on the curent dice """
+    
+    # set the score for the given rowName based on the current dice values
+    self.game.score(rowName)
+    
+    # update the score for this player
+    self.gui.updateScorecard([self.game.getCurrentPlayer()])
+
+    # advance the turn
+    self.game.advanceTurn()
+
+    # check if game is over
+    if self.game.getGameStatus() == Game.STATUS.FINISHED:
+      self.gui.notifyStatus("Game Over!")

@@ -20,6 +20,23 @@ class GUI(object):
     """ Start GUI """
     raise NotImplementedError("subclass must implement")
   
+  
+  def updateHeldDice(self, heldDiceIndices):
+    """ Show the held dice as <heldDiceIndices> """
+    raise NotImplementedError("subclass must implement")
+  
+  def updateDice(self, diceValues):
+    """ Show the current values of the dice """
+    raise NotImplementedError("subclass must implement")
+
+  def updateScorecard(self, playerList):
+    """ Update the scorecard scores """
+    raise NotImplementedError("subclass must implement")
+
+  def updatePossibleScorecard(self, playerList):
+    """ Show the possible scores given the current dice values """
+    raise NotImplementedError("subclass must implement")
+  
   def addedNewBoards(self):
     """ Called when new boards are available in the database """
     raise NotImplementedError("subclass must implement")
@@ -52,7 +69,7 @@ class GUI(object):
 class PyQtGUI(GUI, QtCore.QObject):
   """
   """
-  
+
   # call gui function from other threads
   funcCall = QtCore.pyqtSignal(object)
   
@@ -61,16 +78,46 @@ class PyQtGUI(GUI, QtCore.QObject):
     """ Allows us to call GUI functions from other threads """
     func()
   
+  
+  def updateScorecard(self, playerList):
+    """ Update the scorecard scores """
+    for player in playerList:
+      for rowName, rowScore in player.getScorecard().iterateOverScorecard():
+        if rowScore is None: rowScore = ""
+        else:                rowScore = str(rowScore)
+        self.appCreator.updateScorecardCell(self.appCreator.scoreCells[player][rowName], rowScore)
+
+
+  def updatePossibleScorecard(self, playerList):
+    """ Show the possible scores given the current dice values """
+    
+    for player in playerList:
+      possibleScorecard = player.getScorecard().getPossibleScorecard(self.game.getDiceValues())
+      for rowName, rowScore in possibleScorecard.iterateOverScorecard():
+        if rowScore is None: rowScore = ""
+        else:                rowScore = str(rowScore)
+        self.appCreator.updatePossibleScorecardCell(self.appCreator.scoreCells[player][rowName], rowScore)
+
+  def updateDice(self, diceValues):
+    """ Show the current values of the dice """
+    print(diceValues)
+    for iDice, diceVal in enumerate(diceValues):
+      if diceVal is not None:
+        self.appCreator.updateDiceImage(iDice, diceVal)
+  
+  
+  
+  
   def confirmAction(self, text):
     """ Ask the user to confirm they want to do <the thing> """
-    response = QtWidgets.QMessageBox.question(self.mainWindow, "Fillomino",
+    response = QtWidgets.QMessageBox.question(self.mainWindow, "Yahtzee",
                                               text, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
                                               QtWidgets.QMessageBox.No)
     return response == QtWidgets.QMessageBox.Yes
   
   def notifyStatus(self, text):
     """ Status notification; used or ignored, up to the GUI """
-    QtWidgets.QMessageBox.information(self.mainWindow, "Fillomino",
+    QtWidgets.QMessageBox.information(self.mainWindow, "Yahtzee",
                                       text, QtWidgets.QMessageBox.Ok)
 
     # self.appCreator.setStatusText(text)
@@ -378,22 +425,29 @@ class PyQtGUI(GUI, QtCore.QObject):
       print(rowName, " - ", player.getName(), " - ", cell.text())
     
     @staticmethod
-    def buttonPressed(gui):
-      """ Called whenever a control button is pressed """
+    def holdPressed(gui, diceIndex):
+      """ Called whenever hold is pressed """
       
       # text of button
-      name = gui.sender().text()
-
-      if name == "Hold":
-        
-        # get the hold button pressed
-        holdButtonNum = gui.sender().objectName().split("-")[1]
-        
-        # call controller
-        gui.controller.holdDice(holdButtonNum)
+      #name = gui.sender().text()
       
-      elif name == "Roll":
-        gui.controller.rollDice()
+      print("here")
+      print(diceIndex)
+      #print(gui.sender().objectName())
+      #print(gui.sender().objectName().split("-")[1])
+      
+      
+      # get the hold button pressed
+      #holdButtonNum = gui.sender().objectName().split("-")[1]
+      
+      # call controller
+      gui.controller.toggleDiceHeldStatus(diceIndex)
+
+
+    @staticmethod
+    def rollPressed(gui):
+      """ Called whenever roll is pressed """
+      gui.controller.rollDice()
 
     
     @staticmethod
@@ -482,21 +536,65 @@ class PyQtGUI(GUI, QtCore.QObject):
       # use a box layout for the other layouts
       self.mainLayout = QtWidgets.QVBoxLayout()
       self.mainWindow.setLayout(self.mainLayout)
+
+      self.mainWindow.setStyleSheet(self.gui.MAIN_WINDOW_STYLE)
       
       # GUI elements we want to be able to update
-      self.gameGrid = None
-      self.statusText = None
+      self.displayDice = None
+      self.scoreCells  = None
+      self.statusText  = None
 
     # def setGameGridCell(self, row, column, value):
     #  self.gameGrid[row][column].setText(value)
     
     
-    def updateScorecard(self):
+    def updateDiceImage(self, diceIndex, diceValue):
+      """ Set the dice image to the given value """
       
-      #
+      # get the image that corresponds to the dice values
+      imgLoc = os.path.join("imgs", "dice-{}.png".format(diceValue))
+      pixmap = QtGui.QPixmap(imgLoc)
       
-      pass
+      # isolate the image-showing label and update the image
+      diceLabel = self.displayDice[diceIndex].itemAt(0).widget()
+      diceLabel.setPixmap(pixmap)
     
+    def updateHeldDice(self, diceIndex, isHeld):
+      
+      """ Update the image of held or free dice """
+      diceLabel = self.displayDice[diceIndex].itemAt(0).widget()
+      holdLabel = self.displayDice[diceIndex].itemAt(1).widget()
+      
+      if isHeld:
+        diceLabel.setStyleSheet(self.gui.DICE_IMAGE_HELD)
+        holdLabel.setStyleSheet(self.gui.DICE_LABEL_HELD)
+        holdLabel.setText("Held")
+      else:
+        diceLabel.setStyleSheet(self.gui.DICE_IMAGE_FREE)
+        holdLabel.setStyleSheet(self.gui.DICE_LABEL_FREE)
+        holdLabel.setText("-")
+    
+    
+    def updateScorecardCell(self, cell, rowScore):
+      font = cell.font()
+      #font.setBold(True)
+      #cell.setStyleSheet("{color: black}")
+      cell.setStyleSheet(self.gui.SCORE_STYLE_NORMAL)
+      if rowScore is None: rowScore = ""
+      else:                rowScore = str(rowScore)
+      cell.setText(rowScore)
+      
+    def updatePossibleScorecardCell(self, cell, rowScore):
+
+      #font = cell.font()
+      
+      # font.setBold(True)
+      #cell.setStyleSheet("{color: crimson}")
+      cell.setStyleSheet(self.gui.SCORE_STYLE_POSSIBLE)
+      if rowScore is None: rowScore = ""
+      else:                rowScore = str(rowScore)
+      cell.setText(rowScore)
+      
     def createScorecard(self, players):
       """ Display the scorecards of the players"""
       
@@ -531,19 +629,26 @@ class PyQtGUI(GUI, QtCore.QObject):
         
         return _cell
 
-      def _createScoreCell(_rowName, _player, _align=QtCore.Qt.AlignCenter):
+      def _createScoreCell(_score, _rowName, _player, _align=QtCore.Qt.AlignCenter):
         """
         # Create a score cell
         #
+        # score:   (int) current score
         # rowName: (str) row in scorecard
         # player:  (Player) the scorecard belongs to
         # x:       (int) x-axis grid position of cell
         # y:       (int) y-axis grid position of cell
         #
         """
-  
+        
+        # make None scores blank
+        if _score is None: _score = ""
+        else:              _score = str(_score)
+
+        _score = ""
+        
         # cell is a label
-        _cell = QtWidgets.QLabel("17")
+        _cell = QtWidgets.QLabel(_score)
         _cell.setAlignment(_align)
         _cell.setScaledContents(True)
         
@@ -573,12 +678,25 @@ class PyQtGUI(GUI, QtCore.QObject):
         gridLayout.addWidget(nameCell, 0, iPlayer + 1)
       
       # create empty score cells
+      scoreCells = {}
       for iPlayer, player in enumerate(players):
-        for iRow, rowName in enumerate(rowNames):
-          scoreCell = _createScoreCell(rowName, player)
+        
+        # this player's scorecard
+        scorecard = player.getScorecard()
+        
+        # remember the score cells for this player
+        scoreCells[player] = {}
+        
+        # display the current score
+        for iRow, rowName in enumerate(scorecard.getRowNames()):
+          currScore = scorecard.getRowScore(rowName)
+          scoreCell = _createScoreCell(currScore, rowName, player)
           gridLayout.addWidget(scoreCell, iRow+1, iPlayer+1)
+          
+          # remember this cell
+          scoreCells[player][rowName] = scoreCell
 
-      return gridLayout
+      return scoreCells, gridLayout
       
       
       
@@ -622,13 +740,13 @@ class PyQtGUI(GUI, QtCore.QObject):
       self.mainLayout.insertLayout(0, menuLayout, 1)
       
       # scorecard
-      scorecardLayout = self.createScorecard(game.getPlayers())
+      self.scoreCells, scorecardLayout = self.createScorecard(game.getAllPlayers())
       self.mainLayout.insertLayout(1, scorecardLayout, 1)
       
       # probability grid
       
       # roll box
-      rollBoxLayout = self.createRollBox()
+      self.displayDice, rollBoxLayout = self.createRollBox(game.getNumberOfDice())
       self.mainLayout.insertLayout(2, rollBoxLayout, 1)
       
       # game grid
@@ -710,9 +828,9 @@ class PyQtGUI(GUI, QtCore.QObject):
       
       return grid, gridLayout
     
-
     
-    def createRollBox(self):
+    
+    def createRollBox(self, numDice):
       """ Create the control buttons at the bottom of the window """
       
       
@@ -729,49 +847,72 @@ class PyQtGUI(GUI, QtCore.QObject):
           grid[x][y] = self.createCell("", x, y)
           gridLayout.addWidget(grid[x][y], x, y)
       """
-
-      rollBox = QtWidgets.QVBoxLayout()
       
+      def _createSingleDice(_diceIndex):
+        
+        _diceLabel = QtWidgets.QLabel(objectName="image")
+        _diceLabel.setAlignment(QtCore.Qt.AlignCenter)
+        _diceLabel.setScaledContents(True)
+        _diceLabel.setStyleSheet(self.gui.DICE_IMAGE_FREE)
+  
+        _imgLoc = os.path.join("imgs", "dice-{}.png".format(_diceIndex + 1))
+        _pixmap = QtGui.QPixmap(_imgLoc)
+  
+        _diceLabel.setPixmap(_pixmap)
+  
+        #dice.append(_diceLabel)
+  
+        _diceLabel.setMaximumWidth(50)
+        _diceLabel.setMaximumHeight(50)
+  
+        _holdLabel = QtWidgets.QLabel("-", objectName="button")
+  
+        _holdLabel.setAlignment(QtCore.Qt.AlignCenter)
+        _holdLabel.setScaledContents(True)
+        _holdLabel.setStyleSheet(self.gui.DICE_LABEL_FREE)
+  
+        # can't "click" labels, so register a click with a mouse event
+        _diceLabel.mousePressEvent = lambda event: PyQtGUI.UserActions.holdPressed(self.gui, _diceIndex)
+        _holdLabel.mousePressEvent = lambda event: PyQtGUI.UserActions.holdPressed(self.gui, _diceIndex)
+
+        # holdButton = QtWidgets.QPushButton("Hold", objectName="hold-{}".format(iDice))
+        # holdButton.clicked.connect(lambda: PyQtGUI.UserActions.buttonPressed(self.gui))
+  
+        _singleDiceBox = QtWidgets.QVBoxLayout()
+        _singleDiceBox.addWidget(_diceLabel, 100, alignment=QtCore.Qt.AlignCenter)
+        _singleDiceBox.addWidget(_holdLabel, 1)
+        
+        return _singleDiceBox
+      
+      
+      
+
+      
+      
+      displayDice = []
+      
+      # create each die and put it in the diceBox
       diceBox = QtWidgets.QHBoxLayout()
-      
-      numDice = 5
       for iDice in range(numDice):
-        import random
-        label = QtWidgets.QLabel()
-        label.setAlignment(QtCore.Qt.AlignCenter)
-        label.setScaledContents(True)
-        #label.setStyleSheet(self.gui.CELL_STYLE_NORMAL)
+        singleDice = _createSingleDice(iDice)
+        displayDice.append(singleDice)
+        diceBox.addLayout(singleDice)
 
-        imgLoc = os.path.join("imgs", "dice-{}.png".format(random.randint(1,6)))
-        pixmap = QtGui.QPixmap(imgLoc)
-        
-        label.setPixmap(pixmap)
-        label.setMaximumWidth(50)
-        label.setMaximumHeight(50)
-        
-        holdButton = QtWidgets.QPushButton("Hold", objectName="hold-{}".format(iDice))
-        holdButton.clicked.connect(lambda: PyQtGUI.UserActions.buttonPressed(self.gui))
-        
-        singleDiceBox = QtWidgets.QVBoxLayout()
-        singleDiceBox.addWidget(label, 100, alignment=QtCore.Qt.AlignCenter)
-        singleDiceBox.addWidget(holdButton, 1)
-
-        diceBox.addLayout(singleDiceBox)
       
-      
-      rollBox.addLayout(diceBox)
-
+      # create the button to roll the dice
       rollButton = QtWidgets.QPushButton("Roll")
-      rollButton.clicked.connect(lambda: PyQtGUI.UserActions.buttonPressed(self.gui))
+      rollButton.clicked.connect(lambda: PyQtGUI.UserActions.rollPressed(self.gui))
       buttonBox = QtWidgets.QHBoxLayout()
       buttonBox.addWidget(rollButton, 1000)
       #rollBox.setStretch(0, 1)
       #rollBox.setStretch(1, 1000)
-      
 
+      # put the dice box and roll button into the rollBox
+      rollBox = QtWidgets.QVBoxLayout()
+      rollBox.addLayout(diceBox)
       rollBox.addLayout(buttonBox)#, alignment=QtCore.Qt.AlignCenter)
       
-      return rollBox
+      return displayDice, rollBox
       
       # horizontal layout
       controlsGrid = QtWidgets.QHBoxLayout()
@@ -817,9 +958,20 @@ class PyQtGUI(GUI, QtCore.QObject):
     
     # score styles
     defaultScoreStyle = "border-style: outset; border-width: 1px; border-color: black; "
-    #self.SCORE_STYLE_INITIAL = defaultScoreStyle + " background: linen; "
-    self.SCORE_STYLE_NORMAL = defaultScoreStyle + " background: white; "
-    self.SCORE_STYLE_TOTAL = defaultScoreStyle + " background: linen; border-width: 1px;"
+    self.SCORE_STYLE_NORMAL   = defaultScoreStyle + " background: white; color: black; "
+    self.SCORE_STYLE_POSSIBLE = defaultScoreStyle + " background: white; color: crimson; "
+    self.SCORE_STYLE_TOTAL    = defaultScoreStyle + " background: linen; color: black; border-width: 1px;"
+    
+    
+    # main window
+    self.MAIN_WINDOW_STYLE = " background: white; "
+    
+    # hold label
+    defaultDicedStyle = "border-style: outset; "
+    self.DICE_IMAGE_FREE = defaultDicedStyle + " background: white; "
+    self.DICE_LABEL_FREE = defaultDicedStyle + " background: white; "
+    self.DICE_IMAGE_HELD = defaultDicedStyle + " background: lightskyblue; "
+    self.DICE_LABEL_HELD = defaultDicedStyle + " background: lightskyblue; "
     
     # group cell styles
     self.CELL_STYLE_1 = defaultScoreStyle + "background: powderblue;"
@@ -876,6 +1028,13 @@ class PyQtGUI(GUI, QtCore.QObject):
     
     # set and display the board
     #self.displayNewBoard(board)
+
+  def updateHeldDice(self, heldDiceIndices):
+    """ Update the display to show the currently held and free dice """
+    print("gui: held dice:", heldDiceIndices)
+    for diceIndex in range(self.game.getNumberOfDice()):
+      self.appCreator.updateHeldDice(diceIndex, diceIndex in heldDiceIndices)
+  
   
   def _getCellValue(self, x, y):
     """ Return the value we are currently showing for this game cell """
