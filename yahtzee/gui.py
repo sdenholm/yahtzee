@@ -505,6 +505,39 @@ class PyQtGUI(GUI, QtCore.QObject):
       return cell
     
     
+    def _createProbabilityCell(self, align=QtCore.Qt.AlignCenter):
+      """
+      # Create a score cell
+      #
+      # score:   (int) current score
+      # rowName: (str) row in scorecard
+      # player:  (Player) the scorecard belongs to
+      # x:       (int) x-axis grid position of cell
+      # y:       (int) y-axis grid position of cell
+      #
+      """
+
+      # make None scores blank
+      prob = "@"# if score is None else str(score)
+
+      # cell is a label
+      cell = QtWidgets.QLabel(prob)
+      cell.setAlignment(align)
+      cell.setScaledContents(True)
+
+      cell.setStyleSheet(self.gui.PROBABILITY_STYLE_NORMAL)
+      # cell.setMinimumWidth(222)
+
+      # font for cell text
+      font = QtGui.QFont()
+      font.setPointSize(12)
+      cell.setFont(font)
+
+      # can't "click" labels, so register a click with a mouse event
+      #cell.mousePressEvent = lambda event: PyQtGUI.UserActions.cellClick(self.gui, cell, rowName, player)
+      return cell
+    
+    
     def _createScoreCell(self, score, rowName, player, align=QtCore.Qt.AlignCenter):
       """
       # Create a score cell
@@ -662,14 +695,15 @@ class PyQtGUI(GUI, QtCore.QObject):
       """ Create the menu bar GUI elements"""
       
       # layout
-      menuLayout = QtWidgets.QVBoxLayout()
+      menuLayout = QtWidgets.QHBoxLayout()
       menuLayout.setAlignment(QtCore.Qt.AlignTop)
       
       # menu bar itself
       menubar = QtWidgets.QMenuBar()
       menubar.setNativeMenuBar(False)
-      menubar.setStyleSheet("padding: 1px;")
+      menubar.setStyleSheet(self.gui.MENU_BAR_STYLE)
       menuLayout.addWidget(menubar)
+      menuLayout.addStretch(1000)
       
       ###########################################################################
       # file
@@ -752,11 +786,12 @@ class PyQtGUI(GUI, QtCore.QObject):
       
       # create each die and put it in the diceBox
       diceBox = QtWidgets.QHBoxLayout()
+      diceBox.insertStretch(0, 10000)
       for iDice in range(numDice):
         singleDice = self._createSingleDice(iDice)
         displayDice.append(singleDice)
         diceBox.addLayout(singleDice)
-
+      diceBox.insertStretch(numDice+1, 10000)
       
 
       
@@ -784,8 +819,50 @@ class PyQtGUI(GUI, QtCore.QObject):
       rollBox.addLayout(diceBox)
       rollBox.addLayout(buttonBox)#, alignment=QtCore.Qt.AlignCenter)
       
-      return rollButton, displayDice, rollBox
+      # put horizontal stretchers around the roll box so it maintains its shape
+      rollBoxUnstretcher = QtWidgets.QHBoxLayout()
+      rollBoxUnstretcher.insertStretch(0, 10000)
+      rollBoxUnstretcher.addLayout(rollBox)
+      rollBoxUnstretcher.insertStretch(2, 10000)
+      
+      return rollButton, displayDice, rollBoxUnstretcher
+  
+  
+    def createProbabilityGrid(self, players, numDiceFaces):
+      """ Grid for displaying the probabilities for each row"""
+      
+      # grid layout for grid...
+      gridLayout = QtWidgets.QGridLayout()
+      gridLayout.setSpacing(0)
+  
+      # get the names of the scorecard rows (same for each player)
+      #  -skip total and bonus
+      upperRowNames = players[0].getScorecard().getRowNames(section="upper")[:-2]
+  
+      # populate the rowName column
+      for iLabel, label in enumerate(upperRowNames):
+        gridLayout.addWidget(self._createLabelCell(label), iLabel + 1, 0)
+  
+      # populate dice count row
+      for iDice in range(1, numDiceFaces+1):
+        nameCell = self._createLabelCell(str(iDice), align=QtCore.Qt.AlignCenter)
+        gridLayout.addWidget(nameCell, 0, iDice)
+        
+      # create the probability grid
+      probCells = {}
+      for iRow, rowName in enumerate(upperRowNames):
+  
+        probCells[rowName] = {}
+        
+        for diceNum in range(1, numDiceFaces+1):
+          
+          probCells[rowName][diceNum] = self._createProbabilityCell()
+          gridLayout.addWidget(probCells[rowName][diceNum], iRow+1, diceNum)
+      
+      
+      return probCells, gridLayout
     
+  
   # call gui function from other threads
   funcCall = QtCore.pyqtSignal(object)
 
@@ -830,6 +907,10 @@ class PyQtGUI(GUI, QtCore.QObject):
     self.SCORE_STYLE_POSSIBLE_ZERO = defaultScoreStyle + " background: white; color: crimson; "
     self.SCORE_STYLE_TOTAL         = defaultScoreStyle + " background: linen; color: black; border-width: 1px;"
     
+    # probability grid style
+    defaultProbStyle = "border-style: outset; border-width: 1px; border-color: black; "
+    self.PROBABILITY_STYLE_NORMAL = defaultProbStyle + " background: white; color: black; "
+    
     # dice
     self.DICE_BLANK = "border-style: outset; color: white; background: crimson; "
     
@@ -838,7 +919,13 @@ class PyQtGUI(GUI, QtCore.QObject):
                              "color: black; background: lightsteelblue; "
     
     # main window
-    self.MAIN_WINDOW_STYLE = " background: white; "
+    self.MAIN_WINDOW_STYLE = " "#background: white; "
+    
+    # table
+    self.TABLE_STYLE = " background: forestgreen; "
+    
+    # menu bar
+    self.MENU_BAR_STYLE = "padding: 0px; background: white; "
     
     # hold label
     defaultDicedStyle = "border-style: outset; "
@@ -847,6 +934,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     #self.DICE_IMAGE_HELD = defaultDicedStyle + " background: lightskyblue; "
     self.DICE_LABEL_HELD = defaultDicedStyle + " background: lightskyblue; "
     
+    """
     # group cell styles
     self.CELL_STYLE_1 = defaultScoreStyle + "background: powderblue;"
     self.CELL_STYLE_2 = defaultScoreStyle + "background: bisque;"
@@ -860,6 +948,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     
     # invalid group styles
     self.CELL_STYLE_INVALID = defaultScoreStyle + "background: crimson;"
+    """
     
     ###########################################################################
     # define keys
@@ -893,11 +982,12 @@ class PyQtGUI(GUI, QtCore.QObject):
     #self.appCreator.setlayout(self.game)
     
     # GUI elements we want to be able to update
-    self.rollButton      = None
-    self.displayDice     = None
-    self.playerNameCells = None
-    self.scoreCells      = None
-    self.statusText      = None
+    self.rollButton       = None
+    self.displayDice      = None
+    self.playerNameCells  = None
+    self.probabilityCells = None
+    self.scoreCells       = None
+    self.statusText       = None
     
     self.createLayout()
     
@@ -917,15 +1007,24 @@ class PyQtGUI(GUI, QtCore.QObject):
     """ Create and layout all of the window elements """
     logger.debug("Creating layout")
     
-    appCreator = PyQtGUI.LayoutCreator(self)
+    ###########################################################################
+    # main window setup
+    ###########################################################################
 
     # use a box layout for the other layouts
     mainLayout = QtWidgets.QVBoxLayout()
     self.mainWindow.setLayout(mainLayout)
-
+    
+    # main stylesheet
     self.mainWindow.setStyleSheet(self.MAIN_WINDOW_STYLE)
-
-
+    
+    
+    ###########################################################################
+    # layout main elements
+    ###########################################################################
+    
+    # get a layout creator
+    appCreator = PyQtGUI.LayoutCreator(self)
     
     # remove any previous gui elements
     #appCreator._delLayout()
@@ -934,20 +1033,56 @@ class PyQtGUI(GUI, QtCore.QObject):
     logger.debug("Creating layout: menu bar")
     menuLayout = appCreator.createMenuBar()
     mainLayout.insertLayout(0, menuLayout, 1)
-  
-    # scorecard
-    logger.debug("Creating layout: scorecard")
-    self.playerNameCells, self.scoreCells, scorecardLayout = appCreator.createScorecard(self.game.getAllPlayers())
-    mainLayout.insertLayout(1, scorecardLayout, 1)
+
+    
+    
+    # left side:
+    #  -top: probability grid
+    #  -bot: roll box
+
+    
+    leftLayout  = QtWidgets.QVBoxLayout()
+    
   
     # probability grid
     logger.debug("Creating layout: probability grid")
+    self.probabilityCells, probGridLayout = appCreator.createProbabilityGrid(self.game.getAllPlayers(),
+                                                                             self.game.getNumberOfDiceFaces())
   
     # roll box
     logger.debug("Creating layout: roll box")
     self.rollButton, self.displayDice, rollBoxLayout = appCreator.createRollBox(self.game.getNumberOfDice())
-    mainLayout.insertLayout(2, rollBoxLayout, 1)
-  
+    #mainLayout.insertLayout(2, rollBoxLayout, 1)
+
+    leftLayout.insertLayout(0, probGridLayout, 1)
+    leftLayout.insertStretch(1, 10000)
+    leftLayout.insertLayout(2, rollBoxLayout, 1)
+    
+    # right side:
+    #  -full: scorecard
+    rightLayout = QtWidgets.QVBoxLayout()
+    
+    # scorecard
+    logger.debug("Creating layout: scorecard")
+    self.playerNameCells, self.scoreCells, scorecardLayout = appCreator.createScorecard(self.game.getAllPlayers())
+    #mainLayout.insertLayout(1, scorecardLayout, 1)
+
+    rightLayout.insertLayout(0, scorecardLayout, 100)
+    
+
+    tableLayout = QtWidgets.QHBoxLayout()
+    tableLayout.insertLayout(0, leftLayout, 100)
+    tableLayout.insertLayout(1, rightLayout, 1)
+
+    tableWidget = QtWidgets.QWidget()
+    tableWidget.setLayout(tableLayout)
+    tableWidget.setStyleSheet(self.TABLE_STYLE)
+    
+    #mainLayout.insertLayout(1, tableLayout, 100)
+    mainLayout.insertWidget(1, tableWidget, 100)
+    
+    
+    
     # game grid
     # self.gameGrid, gridLayout = self.createGrid(rows=rows, columns=columns)
     # self.mainLayout.insertLayout(1, gridLayout, 1000)
@@ -1126,7 +1261,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     currPlayerName = player.getName()
     
     ###########################################################################
-    # player name highlighting
+    # highlight player name
     ###########################################################################
     
     # show the current player's name as active, and the others as inactive
@@ -1135,7 +1270,8 @@ class PyQtGUI(GUI, QtCore.QObject):
         playerCell.setStyleSheet(self.PLAYER_NAME_ACTIVE)
       else:
         playerCell.setStyleSheet(self.PLAYER_NAME_INACTIVE)
-
+    
+    
     ###########################################################################
     # reset dice
     ###########################################################################
@@ -1147,6 +1283,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     for iDice in range(len(self.game.getDiceValues())):
       self._updateDiceImage(iDice, -1)
     
+    
     ###########################################################################
     # reset roll button
     ###########################################################################
@@ -1154,42 +1291,52 @@ class PyQtGUI(GUI, QtCore.QObject):
     self._updateRollButton("Roll ({})".format(self.game.getRemainingRolls()))
     
   
-  def gameComplete(self):
-    """ Called when game is completed """
-    logger.debug("gameComplete")
-    
-    totalScores = self.game.getTotalScores()
+  @staticmethod
+  def _assembleFinalScoreMessage(totalScores):
+    """ Create a final score message to show the player(s) """
     
     # get and order the scores
-    scores = [(name, score) for name,score in totalScores.items()]
+    scores = [(name, score) for name, score in totalScores.items()]
     scores.sort(key=lambda x: x[1], reverse=True)
-    
+  
     # find the longest player name/score and get its character length
-    maxNameLength  = max(map(len, list(totalScores.keys())))
+    maxNameLength = max(map(len, list(totalScores.keys())))
     maxScoreLength = len(str(max(list(totalScores.values()))))
-    
+  
     # length of score line
     #  -name + colon + space + score
-    lineLength = maxNameLength+2+maxScoreLength
-
+    lineLength = maxNameLength + 2 + maxScoreLength
+  
     # assemble the score line for each player
     #  -<name>: <score>
     scoreMsg = ""
     for name, score in scores:
-      nameStr  = (name + ":").ljust(maxNameLength+1, " ")
+      nameStr = (name + ":").ljust(maxNameLength + 1, " ")
       scoreStr = str(score).rjust(maxScoreLength, " ")
       scoreMsg += nameStr + " " + scoreStr + "\n"
-      
+  
     # bookend the score message with dashes
     scoreMsg = "".ljust(lineLength, "-") + "\n" + scoreMsg + "".ljust(lineLength, "-")
-
+  
     # font for scores
     font = QtGui.QFont("TypeWriter")
     font.setStyleHint(QtGui.QFont.TypeWriter)
     font.setFixedPitch(True)
     font.setPointSize(15)
     font.setBold(True)
-
+    
+    # return the final message and the font
+    return scoreMsg, font
+  
+  
+  def gameComplete(self):
+    """ Called when game is completed """
+    logger.debug("gameComplete")
+    
+    # assemble the score message and its font
+    scoreMsg, font = self._assembleFinalScoreMessage(self.game.getTotalScores())
+    
+    # notify the user of the final scores
     self.notifyStatus(scoreMsg, title="Game Over", font=font)
   
 

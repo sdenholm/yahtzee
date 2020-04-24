@@ -256,22 +256,6 @@ class Scorecard:
       if v == wordLower:
         return k
     raise KeyError("{} not present in mapping".format(wordLower))
-    
-
-
-  
-
-  
-  @staticmethod
-  @functools.lru_cache(maxsize=32)
-  def calcProb():
-    pass
-  
-  
-  @staticmethod
-  def calculateTotalGameTurns(numberOfDiceFaces):
-    """ How many turns will this game have for each player """
-    return 7 + numberOfDiceFaces
   
   
   def __init__(self, numberOfDiceFaces=6):
@@ -327,9 +311,19 @@ class Scorecard:
     return totalScorecard
   
   
-  def getRowNames(self):
+  def getRowNames(self, section="all"):
     """ Return the names of all the scorecard rows, including the totals """
-    return list(self.scorecardUpper.keys()) + list(self.scorecardLower.keys())
+    
+    sectionNameLower = section.lower()
+    
+    if sectionNameLower == "all":
+      return list(self.scorecardUpper.keys()) + list(self.scorecardLower.keys())
+    elif sectionNameLower == "upper":
+      return list(self.scorecardUpper.keys())
+    elif sectionNameLower == "lower":
+      return list(self.scorecardLower.keys())
+    else:
+      raise ValueError("unknown section: {}".format(section))
   
   
   def getRowScore(self, rowName):
@@ -522,6 +516,9 @@ class Game:
     if not (Game.MIN_DICE_FACES <= numberOfDiceFaces <= Game.MAX_DICE_FACES):
       raise ValueError("number of dice faces must be between {} and {}".format(Game.MIN_DICE_FACES, Game.MAX_DICE_FACES))
     
+    # seed random number generator
+    random.seed()
+    
     # game config info
     self.numberOfDice      = numberOfDice
     self.numberOfDiceFaces = numberOfDiceFaces
@@ -531,7 +528,7 @@ class Game:
     self.gameStatus = Game.STATUS.NOT_STARTED
     
     # the number of turns in the game
-    self.turnsPerPlayer = Scorecard.calculateTotalGameTurns(self.numberOfDiceFaces)
+    self.turnsPerPlayer = Game.calculateTotalGameTurns(self.numberOfDiceFaces)
     self.totalGameTurns = None
     
     # keep track of the current player and their remaining turns
@@ -545,15 +542,21 @@ class Game:
     self.heldDice = [False] * numberOfDice
     
     
+    
+  @staticmethod
+  def calculateTotalGameTurns(numberOfDiceFaces):
+    """ How many turns will this game have for each player """
+    return 7 + numberOfDiceFaces
 
-  def getAllPlayers(self):      return self.players
-  def getCurrentPlayer(self):   return self.players[self.currentPlayerIndex]
-  def getDiceValues(self):      return self.diceValues
-  def getGameStatus(self):      return self.gameStatus
-  def getNumberOfDice(self):    return self.numberOfDice
-  def getNumberOfPlayers(self): return len(self.players)
-  def getNumberOfRolls(self):   return self.numberOfRolls
-  def getRemainingRolls(self):  return self.remainingRolls
+  def getAllPlayers(self):        return self.players
+  def getCurrentPlayer(self):     return self.players[self.currentPlayerIndex]
+  def getDiceValues(self):        return self.diceValues
+  def getGameStatus(self):        return self.gameStatus
+  def getNumberOfDice(self):      return self.numberOfDice
+  def getNumberOfDiceFaces(self): return self.numberOfDiceFaces
+  def getNumberOfPlayers(self):   return len(self.players)
+  def getNumberOfRolls(self):     return self.numberOfRolls
+  def getRemainingRolls(self):    return self.remainingRolls
 
   def getHeldDice(self):
     """ Return the indices of the held dice """
