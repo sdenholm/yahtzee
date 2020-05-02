@@ -34,6 +34,7 @@ class Scorecard:
     FULL_HOUSE      = "Full House"
     SMALL_STRAIGHT  = "Small Straight"
     LARGE_STRAIGHT  = "Large Straight"
+    CHANCE          = "Chance"
     YAHTZEE         = "Yahtzee"
     YAHTZEE_BONUS   = "Yahtzee Bonus"
     LOWER_TOTAL     = "Lower Total"
@@ -47,10 +48,17 @@ class Scorecard:
     YAHTZEE_BONUS  = 100
   
   class PointsCalculator:
-  
+    """
+    # Class for determining the points for each section of scorecard, based on
+    # the current values of the dice
+    """
+    
     @staticmethod
     def _hasStraight(uniqueSortedDice, length):
-      """ Is there a straight sequence of <length> dice within the list of unique, sorted dice"""
+      """
+      # Is there a straight sequence of <length> dice within the list of
+      # unique, sorted dice
+      """
     
       # if we don't have enough dice for a straight
       if len(uniqueSortedDice) < length:
@@ -66,9 +74,17 @@ class Scorecard:
   
     @staticmethod
     def _hasFullHouse(diceCounts):
-      """ Do we have a full house, i.e., only two unique dice values, with at least 2 of everything """
+      """
+      # Do we have a full house, i.e., only two unique dice values, with
+      # at least 2 of everything
+      """
       return len(diceCounts.index) == 2 and (diceCounts > 1).all()
-  
+
+    @staticmethod
+    def _hasYahtzee(diceCounts):
+      """ Do we have a Yahtzee, i.e., all dice values are the same """
+      return len(diceCounts) == 1
+
     @staticmethod
     def _calcOfAKindScore(num, kind, diceValues):
       """
@@ -149,7 +165,7 @@ class Scorecard:
       
     def _calcYahtzee(self):
       """ Yahtzee score """
-      return Scorecard.POINTS.YAHTZEE.value if len(self.diceCounts) == 1 else 0
+      return Scorecard.POINTS.YAHTZEE.value if Scorecard.PointsCalculator._hasYahtzee(self.diceCounts) else 0
     
     def _calcYahtzeeBonus(self):
       # yahtzee bonus
@@ -159,6 +175,12 @@ class Scorecard:
     
     
     def __init__(self, scorecard):
+      """
+      #
+      # scorecard: (scorecard) to base our calculations on
+      #
+      """
+
       self.scorecard = scorecard
 
       # dice info
@@ -167,21 +189,46 @@ class Scorecard:
       self.diceCounts       = None
       self.uniqueSortedDice = None
       
+      ## score function mappings
+      #self.scoreFn = {
+      #  "Three of a Kind": self._calc3ofAKind,
+      #  "Four of a Kind":  self._calc4ofAKind,
+      #  "Full House":      self._calcFullHouse,
+      #  "Small Straight":  self._calcSmallStraight,
+      #  "Large Straight":  self._calcLargeStraight,
+      #  "Chance":          self._calcChance,
+      #  "Yahtzee":         self._calcYahtzee,
+      #  "Yahtzee Bonus":   self._calcYahtzeeBonus
+      #}
+      
       # score function mappings
       self.scoreFn = {
-        "Three of a Kind": self._calc3ofAKind,
-        "Four of a Kind":  self._calc4ofAKind,
-        "Full House":      self._calcFullHouse,
-        "Small Straight":  self._calcSmallStraight,
-        "Large Straight":  self._calcLargeStraight,
-        "Chance":          self._calcChance,
-        "Yahtzee":         self._calcYahtzee,
-        "Yahtzee Bonus":   self._calcYahtzeeBonus
+        Scorecard.ROW_NAME.THREE_OF_A_KIND: self._calc3ofAKind,
+        Scorecard.ROW_NAME.FOUR_OF_A_KIND:  self._calc4ofAKind,
+        Scorecard.ROW_NAME.FULL_HOUSE:      self._calcFullHouse,
+        Scorecard.ROW_NAME.SMALL_STRAIGHT:  self._calcSmallStraight,
+        Scorecard.ROW_NAME.LARGE_STRAIGHT:  self._calcLargeStraight,
+        Scorecard.ROW_NAME.CHANCE:          self._calcChance,
+        Scorecard.ROW_NAME.YAHTZEE:         self._calcYahtzee,
+        Scorecard.ROW_NAME.YAHTZEE_BONUS:   self._calcYahtzeeBonus
       }
       
+      
+      # score sections that score max value when the joker rule applies
+      self.jokerEligibleSections = {
+        Scorecard.ROW_NAME.FULL_HOUSE:     Scorecard.POINTS.FULL_HOUSE.value,
+        Scorecard.ROW_NAME.SMALL_STRAIGHT: Scorecard.POINTS.SMALL_STRAIGHT.value,
+        Scorecard.ROW_NAME.LARGE_STRAIGHT: Scorecard.POINTS.LARGE_STRAIGHT.value
+      }
+      
+      
     def calculate(self, rowNameList, diceValues):
-      """  """
+      """
+      # Find the score that would be earned in each row for <rowNameList>
+      # when given the <diceValues>
+      """
       logger.debug("points calculate: {}, {}".format(rowNameList, diceValues))
+      
       
       # sort and process dice
       self.diceValues       = diceValues
@@ -189,35 +236,22 @@ class Scorecard:
       self.diceCounts       = pd.Series(self.diceSorted).value_counts()
       self.uniqueSortedDice = sorted(self.diceCounts.index.to_list())
       
-      def _isKnownWordNum(sectionName):
-        """ Test if sectionName is a valid upper secion """
-        try:
-          Scorecard.wordToNum(sectionName)
-          return True
-        except KeyError:
-          return False
-
-      
       
       # name of known lower sections, i.e., those in our score mapping
-      scoreFnRows = list(self.scoreFn.keys())
-
-      # isolate the upper and lower section rows
-      #  -lower rows are those known to our score mapping
-      #  -upper rows are dynamic, so just assign remaining rows to upper and check them later
-      lowerSectionRows = list(filter(lambda x: x in scoreFnRows, rowNameList))
-      upperSectionRows = list(filter(lambda x: x not in lowerSectionRows, rowNameList)) #self.scorecard.getRowNames()))
-      #upperSectionRows = filter(lambda x: x not in lowerSectionRows and _isKnownWordNum(x),
-      #                            self.scorecard.getRowNames())
-
-      logger.debug("points calculate: upperSectionRows: {}".format(upperSectionRows))
-      logger.debug("points calculate: lowerSectionRows: {}".format(lowerSectionRows))
+      #scoreFnRows = [x.value for x in self.scoreFn.keys()]# list(self.scoreFn.keys())
+      #scoreFnRows = list(self.scoreFn.keys())
       
-      ## CHECK: weren't given unknown rows
-      #unknownRowNames = [x for x in rowNameList if x not in lowerSectionRows and x not in upperSectionRows]
-      #if len(unknownRowNames) > 0:
-      #  raise ValueError("Unknown row names were given: {}".format(unknownRowNames))
-
+      # separate the row names into upper and lower section rows
+      #  -lower section rows are defined in Scorecard.ROW_NAME
+      #  -upper section rows are assigned as everything else and checked later
+      upperSectionRows = []
+      lowerSectionRows = []
+      for rowName in rowNameList:
+        try:
+          lowerSectionRows.append(Scorecard.ROW_NAME(rowName))
+        except ValueError:
+          upperSectionRows.append(rowName)
+          
       results = {}
 
       # upper section calculations
@@ -230,15 +264,50 @@ class Scorecard:
         # raises KeyError if we have been passed an unknown row name
         except KeyError:
           raise KeyError("Unknown rowName was given: {}".format(sectionName))
-
+        
+        # calculate the score for this row
         results[sectionName] = self._calcUpperSection(sectionNum)
+
+      
+      # does the joker rule apply, i.e.:
+      #  -the yahtzee score has been taken, and is not 0
+      #  -this the second+ yahtzee
+      isJoker = self.scorecard.getRowScore(Scorecard.ROW_NAME.YAHTZEE.value) == Scorecard.POINTS.YAHTZEE.value
+      logger.debug("points calculate: isJoker: {}".format(isJoker))
+
+      # if the joker rule applies, scoring in the upper section takes priority
+      if isJoker:
+        
+        # did we score in the upper section
+        scoredInUpperSection = sum(results.values()) > 0
+        
+        # we add the yahtzee bonus regardless
+        currBonus = self.scorecard.getRowScore(Scorecard.ROW_NAME.YAHTZEE_BONUS.value)
+        if currBonus is None:
+          currBonus = 0
+        results[Scorecard.ROW_NAME.YAHTZEE_BONUS.value] = currBonus + Scorecard.POINTS.YAHTZEE_BONUS.value
+
+        # if we can score in the upper section, we have to, so we're done
+        if scoredInUpperSection:
+          logger.debug("points calculate: results (no lower): {}".format(results))
+          return results
       
       
+      logger.debug("points calculate: 2")
       # lower section calculations
+      #  -don't need to check for KeyErrors as <lowerSectionRows> is taken
+      #   directly from <scoreFn>'s keys
       for sectionName in lowerSectionRows:
-        results[sectionName] = self.scoreFn[sectionName]()
+        results[sectionName.value] = self.scoreFn[sectionName]()
+
       
-      logger.debug("points calculate results: {}".format(results))
+      # if the joker rule applies then we can score the max values in
+      # the joker-eligible sections
+      if isJoker:
+        for rowName, maxRowScore in self.jokerEligibleSections.items():
+          if results.get(rowName.value, None) is not None:
+            results[rowName.value] = maxRowScore
+      
       return results
     
     
@@ -299,8 +368,12 @@ class Scorecard:
   
   def canScoreRow(self, rowName):
     """ Can we score, or update the score, in this row """
-    return rowName in self._getFreeRows()
+    return rowName in self.getFreeRows()
   
+  @staticmethod
+  def isBonusRow(rowName):
+    """ Is <rowName> a bonus row """
+    return rowName == Scorecard.ROW_NAME.YAHTZEE_BONUS
 
   def getAllScores(self):
     """ Return the full score card in order """
@@ -327,7 +400,11 @@ class Scorecard:
   
   
   def getRowScore(self, rowName):
-    """ Get the score for the <rowName> row """
+    """
+    # Get the score for the <rowName> row
+    #
+    # rowName: (str) name of row
+    """
     try:
       return self.scorecardUpper[rowName]
     except KeyError:
@@ -347,13 +424,12 @@ class Scorecard:
   
     # filter the rowNameList by free rows, or use all free rows if no rows
     # are specified
-    freeRows = self._getFreeRows()
+    freeRows = self.getFreeRows()
     if rowNameList is None:
       rowNameList = freeRows
     else:
-      # rowNameList = [rowName for rowName in rowNameList if rowName in freeRows]
       rowNameList = list(filter(lambda x: x in freeRows, rowNameList))
-  
+    
     # create a points calculator and find the possible scores
     pointsCalc = Scorecard.PointsCalculator(self)
     scores = pointsCalc.calculate(rowNameList, diceValues)
@@ -361,7 +437,7 @@ class Scorecard:
     # create a new, blank scorecard and populate it with our results
     blankCard = Scorecard(self.numberOfDiceFaces)
     for rowName, rowScore in scores.items():
-      blankCard.setScore(rowName, rowScore, updateTotals=False)
+      blankCard.updateScore(rowName, rowScore, updateTotals=False)
   
     return blankCard
   
@@ -382,29 +458,46 @@ class Scorecard:
     return upperTotal + upperBonus + lowerTotal
     
     
-  def setScore(self, rowName, score, updateTotals=True):
+  def updateScore(self, rowName, score, updateTotals=True):
     """
-    # Set the score for the <rowName> row
+    # Update the score for the <rowName> row
+    #  -for normal rows the score is set to <score>, whilst bonus rows will
+    #  be += the score
     #
     # rowName:      (str) name of row to set
     # score:        (int) score to set
     # updateTotals: (bool) should we also update the section totals/bonuses
     #
     """
-    logger.debug("_setScore: {} = {}".format(rowName, score))
+    logger.debug("setScore: {} = {}".format(rowName, score))
+    
     
     # if the rowName is in the upper section, store it
     if rowName in self.scorecardUpper:
-      self.scorecardUpper[rowName] = score
+      
+      # check if it's a bonus to add or score to set
+      if Scorecard.isBonusRow(rowName):
+        self.scorecardUpper[rowName] += score
+      else:
+        self.scorecardUpper[rowName] = score
+        
       if updateTotals:
         self._updateUpperScore()
     
+    
     # if the rowName is in the lower section, store it
     elif rowName in self.scorecardLower:
-      self.scorecardLower[rowName] = score
+  
+      # check if it's a bonus to add or score to set
+      if Scorecard.isBonusRow(rowName):
+        self.scorecardLower[rowName] += score
+      else:
+        self.scorecardLower[rowName] = score
+        
       if updateTotals:
         self._updateLowerScore()
-      
+    
+    
     # KeyError if the rowName isn't valid
     else:
       raise KeyError("unknown rowName: {}".format(rowName))
@@ -464,7 +557,7 @@ class Scorecard:
       yield k,v
   
 
-  def _getFreeRows(self):
+  def getFreeRows(self):
     """ Returns list of row names that can be scored """
     
     # ignore rows that base their value on something else
@@ -498,7 +591,11 @@ class Game:
   MIN_DICE_FACES = 6
   MAX_DICE_FACES = 20
   
+  MIN_NUM_ROLLS = 1
+  MAX_NUM_ROLLS = 5
+  
   class STATUS(Enum):
+    """ Status of the current game """
     NOT_STARTED = 0
     RUNNING     = 1
     FINISHED    = 2
@@ -506,16 +603,23 @@ class Game:
   
 
   
-  def __init__(self, numberOfDice=5, numberOfDiceFaces=6, numberOfRolls=3):
+  def __init__(self, playerNameList, numberOfDice=5, numberOfDiceFaces=6, numberOfRolls=3):
     
     # CHECK: number of dice
     if not (Game.MIN_NUM_DICE <= numberOfDice <= Game.MAX_NUM_DICE):
-      raise ValueError("number of dice must be between {} and {}".format(Game.MIN_NUM_DICE, Game.MAX_NUM_DICE))
+      raise ValueError(
+        "number of dice must be between {} and {}".format(Game.MIN_NUM_DICE, Game.MAX_NUM_DICE))
 
     # CHECK: number of dice faces
     if not (Game.MIN_DICE_FACES <= numberOfDiceFaces <= Game.MAX_DICE_FACES):
-      raise ValueError("number of dice faces must be between {} and {}".format(Game.MIN_DICE_FACES, Game.MAX_DICE_FACES))
-    
+      raise ValueError(
+        "number of dice faces must be between {} and {}".format(Game.MIN_DICE_FACES, Game.MAX_DICE_FACES))
+
+    # CHECK: number of dice rolls
+    if not (Game.MIN_NUM_ROLLS <= numberOfRolls <= Game.MAX_NUM_ROLLS):
+      raise ValueError(
+        "number of dice rolls must be between {} and {}".format(Game.MIN_NUM_ROLLS, Game.MAX_NUM_ROLLS))
+
     # seed random number generator
     random.seed()
     
@@ -541,6 +645,9 @@ class Game:
     # list of player-held dice
     self.heldDice = [False] * numberOfDice
     
+    # add any initial players
+    for playerName in playerNameList:
+      self.addPlayer(playerName)
     
     
   @staticmethod
@@ -599,7 +706,7 @@ class Game:
   
   def score(self, rowName):
     """
-    # Apply the appropriate score to the <rowName> row, given the current diceVales
+    # Apply the appropriate score to the <rowName> row, given the current diceValues
     #
     # rowName: (str) name of row to score on
     #
@@ -609,17 +716,25 @@ class Game:
     # get the current player's scorecard
     playerScorecard = self.getCurrentPlayer().getScorecard()
     
-    # CHECK: row does already have a score
-    #  -note: can score multiple times in a yahtzee or yahtzee bonus row
-    if rowName not in ["Yahtzee", "Yahtzee Bonus"] and playerScorecard.getRowScore(rowName) is not None:
-      raise SystemError("tried to score on an already scored row")
+    # CHECK: row doesn't already have a score
+    if playerScorecard.getRowScore(rowName) is not None:
+      #raise SystemError("tried to score on an already scored row")
+      return
+      
+    
+    ## CHECK: row does already have a score
+    ##  -note: can score multiple times in a yahtzee or yahtzee bonus row
+    #if rowName not in ["Yahtzee", "Yahtzee Bonus"] and playerScorecard.getRowScore(rowName) is not None:
+    #  raise SystemError("tried to score on an already scored row")
     
     # calculate the score for this row
     pointsCalc = Scorecard.PointsCalculator(playerScorecard)
     scores = pointsCalc.calculate([rowName], self.getDiceValues())
     
-    # store the score
-    playerScorecard.setScore(rowName, scores[rowName])
+    # store the score(s)
+    #  -may be more than one score if there is a yahtzee bonus
+    for scoreName, scoreValue in scores.items():
+      playerScorecard.updateScore(scoreName, scoreValue)
     
     
   def advanceTurn(self):
@@ -681,8 +796,8 @@ class Game:
                           .format(numberOfDice, self.numberOfDice))
     
     # roll the dice
-    #return [random.randint(1, self.numberOfDiceFaces) for _ in range(numberOfDice)]
-    return [6 for _ in range(numberOfDice)]
+    return [random.randint(1, self.numberOfDiceFaces) for _ in range(numberOfDice)]
+    #return [1 for _ in range(numberOfDice)]
   
 
   

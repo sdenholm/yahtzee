@@ -18,11 +18,34 @@ from yahtzee.gui import PyQtGUI
 
 class Controller:
   
+  DEFAULT_CONFIG = {
+    "databaseFile":      "yahtzee.db",
+    "playerName":        "Player One",
+    "numberOfDice":      5,
+    "numberOfDiceFaces": 6,
+    "numberOfRolls":     3,
+    "version":           1.0,
+  }
+  
+  @staticmethod
+  def createNewConfigFile(configFileLoc):
+    """ Create a new config file at this location """
+
+    # CHECK: file location doesn't already exist
+    if os.path.exists(configFileLoc):
+      raise FileExistsError("Cannot create a new config file as file already exists at {}".format(configFileLoc))
+  
+    # create a new, file and write the default data
+    with open(configFileLoc, 'w') as f:
+      yaml.safe_dump(Controller.DEFAULT_CONFIG, f)
+      
+      
   @staticmethod
   def _loadConfigFile(configFileLoc):
     """ Load in the data from the yaml config file """
 
-    entryNames = ["database-file", "rows", "columns", "version"]
+    entryNames = ["databaseFile", "playerName", "numberOfDice",
+                  "numberOfDiceFaces", "numberOfRolls", "version"]
     
     # CHECK: file location exists
     if not os.path.exists(configFileLoc):
@@ -38,6 +61,7 @@ class Controller:
         raise SystemError("Config file is missing an entry for {}".format(entry))
     
     return configData
+  
   
   @staticmethod
   def _updateConfigFile(configFileLoc, newConfigData):
@@ -61,33 +85,111 @@ class Controller:
   
   def __init__(self, configFileLoc):
     
+    # if there's no config file, create a new one
+    if not os.path.exists(configFileLoc):
+      logger.debug("No config file found; creating a new one")
+      Controller.createNewConfigFile(configFileLoc)
+    
     self.configFileLoc = configFileLoc
   
     # load the config data from the config file
-    #self.configData = Controller._loadConfigFile(configFileLoc)
+    self.configData = Controller._loadConfigFile(configFileLoc)
 
-    # create a GUI
-    self.game = Game()
-    self.game.addPlayer("Stewart")
-    self.game.addPlayer("Kali")
-    
-    """
-    self.game.getPlayer("Stewart").getScorecard().setScore("Ones", 400)
-    self.game.getPlayer("Stewart").getScorecard().setScore("Full House", 200)
-    self.game.getPlayer("Kali").getScorecard().setScore("Threes", 33)
-    """
-    
+    # create a new game and GUI using the config data
+    self.game = Game(playerNameList    = [self.configData["playerName"]],
+                     numberOfDice      = self.configData["numberOfDice"],
+                     numberOfDiceFaces = self.configData["numberOfDiceFaces"],
+                     numberOfRolls     = self.configData["numberOfRolls"])
     self.gui = PyQtGUI(self, self.game)
     
+    
+  def newGame(self, forceNewGame=False):
+    """ Start a new game """
+    logger.debug("newGame: Starting a new game")
+    
+    # if there is already a game in progress, confirm with the user
+    if not forceNewGame and self.game.getGameStatus() == Game.STATUS.RUNNING\
+                        and not self.gui.confirmAction("Abandon game in progress?"):
+      return
+    
+    # load the config data from the config file
+    self.configData = Controller._loadConfigFile(self.configFileLoc)
+    
+    # create a new game and tell the GUI
+    self.game = Game(playerNameList    = [self.configData["playerName"]],
+                     numberOfDice      = self.configData["numberOfDice"],
+                     numberOfDiceFaces = self.configData["numberOfDiceFaces"],
+                     numberOfRolls     = self.configData["numberOfRolls"])
+    self.gui.newGame(self.game)
+    
+  
   
   def aboutText(self, textFormat="richtext"):
+    """ Text giving the game info """
+
+    versionNumber = self.configData["version"]
     
     if textFormat == "richtext":
-      return "Yahtzee, yo!"
+      return """Yahtzee v{}<p>By Stewart Denholm<p><a href=https://github.com/sdenholm>GitHub</a>"""\
+        .format(versionNumber)
+    else:
+      return """Yahtzee v{}\nBy Stewart Denholm\nGitHub: github.com/sdenholm"""\
+        .format(versionNumber)
+
+  def howToPlayText(self, textFormat="richtext"):
+    """ Text describing how to play the game """
+  
+    msg = """
+    <h3>How to Play</h3><p>
+    1) Fill in the blanks using the digits 1-9 to create regions, called polyominoes.<p>
+    2) A region must contain as many cells as its number value e.g., three number 3s together will
+    make a region, or four number 4s together, five number 5s, etc.<p>
+    3) Regions with the same number cannot touch. For example, two regions of four 4s cannot
+    be neighbours.<p>
+    4) When the board is filled, you win!<p><p>
+    <h3>Generating Boards</h3><p>
+    To play, you must first generate boards:<p>
+    1) From the menu, select [Boards]=>[Generate New Boards]<p>
+    2) Choose the board dimensions, and how many boards to generate.<p>
+    3) Click Generate.<p>
+    When generation is done, select [File]=>[Load Random Board] from the main menu to play one of the boards.
+    """
+    
+    msg = "Yahtzee, yo!"
+    
+    if textFormat == "richtext":
+      return msg
+    else:
+      return msg.replace("<p>", "\n\n").replace("<h3>", "").replace("<\h3>", "")
+    
   
   def run(self):
     self.gui.run()
+  
+  def configureDice(self):
+    """ Setup the parameters for the dice """
+    logger.debug("configureDice")
     
+    # if there is already a game in progress, confirm with the user
+    if self.game.getGameStatus() == Game.STATUS.RUNNING and \
+        not self.gui.confirmAction("Abandon game in progress?"):
+      return
+    
+    # get the new dice values from the user
+    newDiceValues = self.gui.showDiceSetupWindow()
+    logger.debug("configureDice: new dice values: {}".format(newDiceValues))
+    
+    # if we get new values
+    if newDiceValues is not None:
+      
+      # update the config file
+      Controller._updateConfigFile(self.configFileLoc, newDiceValues)
+      
+      # start a new game
+      self.newGame(forceNewGame=True)
+      
+      
+  
   def rollDice(self):
     """
     # Roll the dice. Used to:

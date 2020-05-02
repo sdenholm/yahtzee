@@ -1,12 +1,9 @@
 import logging
 logger = logging.getLogger(__name__)
 
-import os
 import threading
 import time
 import sys
-
-import numpy as np
 
 import PyQt5.QtCore as QtCore
 import PyQt5.QtGui as QtGui
@@ -23,6 +20,10 @@ class GUI(object):
     """ Called when game is completed """
     raise NotImplementedError("subclass must implement")
   
+  def newGame(self, game):
+    """ Reset the GUI and start a new game """
+    raise NotImplementedError("subclass must implement")
+  
   def notifyStatus(self, text):
     """ Status notification; used or ignored, up to the GUI """
     raise NotImplementedError("subclass must implement")
@@ -34,11 +35,11 @@ class GUI(object):
   def startPlayerTurn(self, player):
     """ Start this player's turn """
     raise NotImplementedError("subclass must implement")
-  
+
   def updateDice(self, diceValues):
     """ Show the current values of the dice """
     raise NotImplementedError("subclass must implement")
-  
+
   def updateHeldDice(self, heldDiceIndices):
     """ Show the held dice as <heldDiceIndices> """
     raise NotImplementedError("subclass must implement")
@@ -64,7 +65,252 @@ class PyQtGUI(GUI, QtCore.QObject):
   """
   """
 
+  class DiceSetupWindow(QtWidgets.QDialog):
+    
+    class UserActions(object):
+      
+      @staticmethod
+      def cancelPressed(dialog):
+        """ Called when cancel is pressed """
+        logger.debug("DiceSetupWindow: cancel pressed")
+        
+        # wipe the stored values
+        dialog.values = None
+        
+        # close dialog
+        dialog.close()
+      
+        # text of button
+        # name = gui.sender().text()
 
+      @staticmethod
+      def okayPressed(dialog):
+        """ Called when okay is pressed """
+        logger.debug("DiceSetupWindow: okay pressed")
+        
+        # check entered values are acceptable
+        #if not dialog.userEntriesAcceptable():
+        #  return
+        
+        # get the user's entries, making sure they're acceptable
+        enteredValues = dialog.getUserEntries()
+        if enteredValues is None:
+          dialog.notify("Entered values are not valid")
+          return
+        
+        # store the values and exit
+        logger.debug("DiceSetupWindow: user's new values: {}".format(enteredValues))
+        dialog._setValues(**enteredValues)
+        dialog.close()
+        
+        # text of button
+        # name = gui.sender().text()
+    
+    # call gui function from other threads
+    funcCall = QtCore.pyqtSignal(object)
+    
+    
+    
+
+    
+    @QtCore.pyqtSlot(object)
+    def remoteCall(self, func):
+      """ Allows us to call GUI functions from other threads """
+      func()
+    
+    
+    def __init__(self, parent, numberOfDiceInfo, numberOfDiceFacesInfo, numberOfRollsInfo):
+      super().__init__(parent)
+      
+      # dice info
+      self.numberOfDiceInfo      = numberOfDiceInfo
+      self.numberOfDiceFacesInfo = numberOfDiceFacesInfo
+      self.numberOfRollsInfo     = numberOfRollsInfo
+
+      
+      # update dialog from a different thread
+      self.funcCall.connect(self.remoteCall)
+      
+      # holds values the user sets in the dialog box
+      self.values = {}
+      
+      # reference to entries user makes
+      self.numDiceInput  = None
+      self.numFacesInput = None
+      self.numRollsInput = None
+      
+      # create the layout
+      self._createLayout()
+    
+    
+    def _createLayout(self):
+      """ Piece the layout together """
+      
+      self.setWindowTitle("Dice Setup")
+      self.resize(1, 1)
+  
+      self.setModal(True)
+      self.setObjectName("Dialog")
+      
+      
+      windowLayout = QtWidgets.QVBoxLayout()
+      
+      #numberOfDice = 5, numberOfDiceFaces = 6, numberOfRolls
+      
+      #########################################################################
+      # labels and text entry boxes
+      #########################################################################
+
+      minDice  = self.numberOfDiceInfo["min"]
+      maxDice  = self.numberOfDiceInfo["max"]
+      minFaces = self.numberOfDiceFacesInfo["min"]
+      maxFaces = self.numberOfDiceFacesInfo["max"]
+      minRolls = self.numberOfRollsInfo["min"]
+      maxRolls = self.numberOfRollsInfo["max"]
+      
+      # labels
+      labelLayout   = QtWidgets.QVBoxLayout()
+      numDiceLabel  = QtWidgets.QLabel("Number of Dice {}-{}:".format(minDice, maxDice))
+      numFacesLabel = QtWidgets.QLabel("Number of Faces {}-{}:".format(minFaces, maxFaces))
+      numRollsLabel = QtWidgets.QLabel("Number of Rolls {}-{}:".format(minRolls, maxRolls))
+      labelLayout.addWidget(numDiceLabel)
+      labelLayout.addWidget(numFacesLabel)
+      labelLayout.addWidget(numRollsLabel)
+      
+      # value entry
+      inputLayout   = QtWidgets.QVBoxLayout()
+      self.numDiceInput  = QtWidgets.QLineEdit()
+      self.numDiceInput.setText(str(self.numberOfDiceInfo["curr"]))
+      self.numFacesInput = QtWidgets.QLineEdit()
+      self.numFacesInput.setText(str(self.numberOfDiceFacesInfo["curr"]))
+      self.numRollsInput = QtWidgets.QLineEdit()
+      self.numRollsInput.setText(str(self.numberOfRollsInfo["curr"]))
+      inputLayout.addWidget(self.numDiceInput)
+      inputLayout.addWidget(self.numFacesInput)
+      inputLayout.addWidget(self.numRollsInput)
+      
+      # layout labels and their entries
+      inputSelectionLayout = QtWidgets.QHBoxLayout()
+      inputSelectionLayout.addLayout(labelLayout, 1)
+      inputSelectionLayout.addLayout(inputLayout, 1000)
+
+      #########################################################################
+      # buttons
+      #########################################################################
+      
+      # okay and cancel buttons
+      cancelButton = QtWidgets.QPushButton("Cancel")
+      okayButton   = QtWidgets.QPushButton("Okay")
+
+      buttonLayout = QtWidgets.QHBoxLayout()
+      buttonLayout.addStretch(10000)
+      buttonLayout.addWidget(cancelButton)
+      buttonLayout.addWidget(okayButton)
+      
+      # connect buttons to events
+      cancelButton.clicked.connect(lambda: PyQtGUI.DiceSetupWindow.UserActions.cancelPressed(self))
+      okayButton.clicked.connect(lambda: PyQtGUI.DiceSetupWindow.UserActions.okayPressed(self))
+      
+      
+      #########################################################################
+      # final layout assembly
+      #########################################################################
+      
+      windowLayout.addLayout(inputSelectionLayout, 1)
+      windowLayout.addStretch(1000)
+      windowLayout.addLayout(buttonLayout, 1)
+      
+      self.setLayout(windowLayout)
+
+      # fix the window size
+      #  -need to wait for a bit so all elements can be set and sized
+      def fn():
+        time.sleep(0.1)
+        self.funcCall.emit(lambda: self.setFixedSize(self.size()))
+      threading.Thread(target=fn).start()
+      
+      
+      """
+      #super(inputdialogdemo, self).__init__(parent)
+    
+      layout = QFormLayout()
+      self.btn = QPushButton("Choose from list")
+      self.btn.clicked.connect(self.getItem)
+    
+      self.le = QLineEdit()
+      layout.addRow(self.btn, self.le)
+      self.btn1 = QPushButton("get name")
+      self.btn1.clicked.connect(self.gettext)
+    
+      self.le1 = QLineEdit()
+      layout.addRow(self.btn1, self.le1)
+      self.btn2 = QPushButton("Enter an integer")
+      self.btn2.clicked.connect(self.getint)
+    
+      self.le2 = QLineEdit()
+      layout.addRow(self.btn2, self.le2)
+      self.setLayout(layout)
+      self.setWindowTitle("Input Dialog demo")
+      """
+
+    def notify(self, text, title="Yahtzee", font=None):
+      """ Display a message to the user """
+  
+      # create the info box
+      msgBox = QtWidgets.QMessageBox(self)
+      msgBox.setIcon(QtWidgets.QMessageBox.Information)
+      msgBox.setWindowTitle(title)
+      msgBox.setText(text)
+      msgBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+  
+      # set the text font
+      if font is not None:
+        msgBox.setFont(font)
+  
+      msgBox.exec()
+    
+    
+    def getUserEntries(self):
+      """ Return the user's entries, or None if any are invalid """
+      
+      # get the text entries
+      try:
+        numDice = int(self.numDiceInput.text())
+        numFaces = int(self.numFacesInput.text())
+        numRolls = int(self.numRollsInput.text())
+      except ValueError:
+        logger.debug("getUserEntries: not ints")
+        return None
+  
+      # are all the values within acceptable ranges
+      numDiceValid  = self.numberOfDiceInfo["min"] <= numDice <= self.numberOfDiceInfo["max"]
+      numFacesValid = self.numberOfDiceFacesInfo["min"] <= numFaces <= self.numberOfDiceFacesInfo["max"]
+      numRollsValid = self.numberOfRollsInfo["min"] <= numRolls <= self.numberOfRollsInfo["max"]
+      logger.debug("getUserEntries: valid: {}".format([numDiceValid, numFacesValid, numRollsValid]))
+      
+      # return the results if all are valid
+      if numDiceValid and numFacesValid and numRollsValid:
+        return {
+          "numberOfDice":      numDice,
+          "numberOfDiceFaces": numFaces,
+          "numberOfRolls":     numRolls
+        }
+      else:
+        return None
+    
+    
+    def getValues(self):
+      """ Called by the GUI to return the user's new values """
+      return self.values if len(self.values) > 0 else None
+    
+    
+    def _setValues(self, numberOfDice=None, numberOfDiceFaces=None, numberOfRolls=None):
+      """ Set one or more dice values """
+      if numberOfDice      is not None: self.values["numberOfDice"]      = numberOfDice
+      if numberOfRolls     is not None: self.values["numberOfRolls"]     = numberOfRolls
+      if numberOfDiceFaces is not None: self.values["numberOfDiceFaces"] = numberOfDiceFaces
+      
+    
   class DEPBoardGeneratorDialog(QtWidgets.QDialog):
     
     class UserActions(object):
@@ -434,7 +680,7 @@ class PyQtGUI(GUI, QtCore.QObject):
       
       # function to call for each menu option
       actionMap = {
-        "Dice": gui.showDiceSetupWindow, #showBoardGeneratorWindow
+        "Dice": gui.controller.configureDice, #showBoardGeneratorWindow
       }
       
       # call menu function
@@ -624,12 +870,9 @@ class PyQtGUI(GUI, QtCore.QObject):
       
       
       
-    
-    def DEP_delLayout(self, layout=None):
+    @staticmethod
+    def deleteLayout(layout):
       """ Delete all of the layout elements """
-      
-      if layout is None:
-        layout = self.mainLayout
       
       while layout.count():
         child = layout.takeAt(0)
@@ -642,7 +885,7 @@ class PyQtGUI(GUI, QtCore.QObject):
         else:
           try:
             if child.count():
-              self._delLayout(child)
+              PyQtGUI.LayoutCreator.deleteLayout(child)
               child.deleteLater()
           except:
             pass
@@ -834,7 +1077,9 @@ class PyQtGUI(GUI, QtCore.QObject):
       # grid layout for grid...
       gridLayout = QtWidgets.QGridLayout()
       gridLayout.setSpacing(0)
-  
+      
+      
+      
       # get the names of the scorecard rows (same for each player)
       #  -skip total and bonus
       upperRowNames = players[0].getScorecard().getRowNames(section="upper")[:-2]
@@ -982,6 +1227,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     #self.appCreator.setlayout(self.game)
     
     # GUI elements we want to be able to update
+    self.mainLayout       = None
     self.rollButton       = None
     self.displayDice      = None
     self.playerNameCells  = None
@@ -1005,15 +1251,25 @@ class PyQtGUI(GUI, QtCore.QObject):
   
   def createLayout(self):
     """ Create and layout all of the window elements """
-    logger.debug("Creating layout")
+    logger.debug("createLayout")
+    
     
     ###########################################################################
     # main window setup
     ###########################################################################
-
-    # use a box layout for the other layouts
-    mainLayout = QtWidgets.QVBoxLayout()
-    self.mainWindow.setLayout(mainLayout)
+    
+    # if this is the first time we're creating the layout
+    if self.mainLayout is None:
+      
+      # use a box layout for the other layouts
+      self.mainLayout = QtWidgets.QVBoxLayout()
+      self.mainWindow.setLayout(self.mainLayout)
+    
+    # else, delete all the elements from the existing layout
+    else:
+      logger.debug("createLayout: deleting existing layout")
+      PyQtGUI.LayoutCreator.deleteLayout(self.mainLayout)
+    
     
     # main stylesheet
     self.mainWindow.setStyleSheet(self.MAIN_WINDOW_STYLE)
@@ -1026,13 +1282,11 @@ class PyQtGUI(GUI, QtCore.QObject):
     # get a layout creator
     appCreator = PyQtGUI.LayoutCreator(self)
     
-    # remove any previous gui elements
-    #appCreator._delLayout()
   
     # menu bar
     logger.debug("Creating layout: menu bar")
     menuLayout = appCreator.createMenuBar()
-    mainLayout.insertLayout(0, menuLayout, 1)
+    self.mainLayout.insertLayout(0, menuLayout, 1)
 
     
     
@@ -1079,7 +1333,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     tableWidget.setStyleSheet(self.TABLE_STYLE)
     
     #mainLayout.insertLayout(1, tableLayout, 100)
-    mainLayout.insertWidget(1, tableWidget, 100)
+    self.mainLayout.insertWidget(1, tableWidget, 100)
     
     
     
@@ -1243,7 +1497,7 @@ class PyQtGUI(GUI, QtCore.QObject):
   
   def updateScorecard(self, playerList):
     """ Update the scorecard scores """
-    logger.debug("updateScorecard: {}".format(playerList))
+    logger.debug("updateScorecard: {}".format([x.getName() for x in playerList]))
   
     for player in playerList:
       for rowName, rowScore in player.getScorecard().iterateOverScorecard():
@@ -1338,20 +1592,38 @@ class PyQtGUI(GUI, QtCore.QObject):
     
     # notify the user of the final scores
     self.notifyStatus(scoreMsg, title="Game Over", font=font)
+    
+    
+  def newGame(self, game):
+    """ Reset the GUI and start a new game """
+    
+    self.game = game
+    self.createLayout()
   
-
-  def confirmAction(self, text):
+  
+  def confirmAction(self, text, title="Yahtzee", font=None):
     """ Ask the user to confirm they want to do <the thing> """
-    response = QtWidgets.QMessageBox.question(self.mainWindow, "Yahtzee",
-                                              text, QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
-                                              QtWidgets.QMessageBox.No)
-    return response == QtWidgets.QMessageBox.Yes
+    
+    # create the question box
+    msgBox = QtWidgets.QMessageBox(self.mainWindow)
+    msgBox.setIcon(QtWidgets.QMessageBox.Question)
+    msgBox.setWindowTitle(title)
+    msgBox.setText(text)
+    msgBox.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
+    msgBox.setDefaultButton(QtWidgets.QMessageBox.No)
+
+    # set the text font
+    if font is not None:
+      msgBox.setFont(font)
+    
+    # returns True if the user chooses "yes"
+    return msgBox.exec() == QtWidgets.QMessageBox.Yes
+    
+    
   
   
   def notifyStatus(self, text, title="Yahtzee", font=None):
     """ Status notification; used or ignored, up to the GUI """
-    #QtWidgets.QMessageBox.information(self.mainWindow, "Yahtzee",
-    #                                  text, QtWidgets.QMessageBox.Ok)
     
     # create the info box
     msgBox = QtWidgets.QMessageBox(self.mainWindow)
@@ -1374,6 +1646,35 @@ class PyQtGUI(GUI, QtCore.QObject):
     sys.exit(self.app.exec_())
   
 
+  def showDiceSetupWindow(self):
+    """ Show the window for configuring the dice, returning any new values """
+    
+    # assemble the current dice info
+    numberOfDiceInfo = {
+      "curr": self.game.getNumberOfDice(),
+      "min":  self.game.MIN_NUM_DICE,
+      "max":  self.game.MAX_NUM_DICE
+    }
+    numberOfDiceFacesInfo = {
+      "curr": self.game.getNumberOfDiceFaces(),
+      "min":  self.game.MIN_DICE_FACES,
+      "max":  self.game.MAX_DICE_FACES
+    }
+    numberOfRollsInfo = {
+      "curr": self.game.getNumberOfRolls(),
+      "min":  self.game.MIN_NUM_ROLLS,
+      "max":  self.game.MAX_NUM_ROLLS
+    }
+    
+    # create the dice setup window
+    diceSetup = PyQtGUI.DiceSetupWindow(self.mainWindow, numberOfDiceInfo,
+                                        numberOfDiceFacesInfo, numberOfRollsInfo)
+    
+    # display the setup window and get the results
+    diceSetup.exec()
+    return diceSetup.getValues()
+    
+  
   
   def showHowToPlay(self):
     """ Display the dialog that discribes how to play """
