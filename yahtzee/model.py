@@ -272,7 +272,8 @@ class Scorecard:
       # does the joker rule apply, i.e.:
       #  -the yahtzee score has been taken, and is not 0
       #  -this the second+ yahtzee
-      isJoker = self.scorecard.getRowScore(Scorecard.ROW_NAME.YAHTZEE.value) == Scorecard.POINTS.YAHTZEE.value
+      isJoker = Scorecard.PointsCalculator._hasYahtzee(self.diceCounts) and\
+                self.scorecard.getRowScore(Scorecard.ROW_NAME.YAHTZEE.value) == Scorecard.POINTS.YAHTZEE.value
       logger.debug("points calculate: isJoker: {}".format(isJoker))
 
       # if the joker rule applies, scoring in the upper section takes priority
@@ -366,15 +367,38 @@ class Scorecard:
     self.upperBonusThreshold = sum(list(range(1, self.numberOfDiceFaces + 1))) * 3
   
   
-  def canScoreRow(self, rowName):
+  def canScoreRow(self, rowName, diceValues):
     """ Can we score, or update the score, in this row """
-    return rowName in self.getFreeRows()
+    
+    # free rows, i.e., can be score in
+    freeRows = self.getFreeRows()
+
+    # name of the upper section if this is a yahtzee
+    upperSectionDiceRow = Scorecard.numToWord(diceValues[0])
+    
+    # if this is a joker then must score upper section first
+    if self.isJoker(diceValues) and upperSectionDiceRow in freeRows:
+      return rowName == upperSectionDiceRow
+      
+    # not a joker, then check if the row is free
+    return rowName in freeRows
   
   @staticmethod
   def isBonusRow(rowName):
     """ Is <rowName> a bonus row """
     return rowName == Scorecard.ROW_NAME.YAHTZEE_BONUS
-
+  
+  def isJoker(self, diceValues):
+    """
+    # Does the joker rule apply
+    #  -we have a yahtzee now
+    # AND
+    #  -this isn't our first yahtzee
+    """
+    diceCounts = pd.Series(diceValues).value_counts()
+    return len(diceCounts) == 1 and \
+           self.getRowScore(Scorecard.ROW_NAME.YAHTZEE.value) == Scorecard.POINTS.YAHTZEE.value
+  
   def getAllScores(self):
     """ Return the full score card in order """
 
@@ -593,6 +617,9 @@ class Game:
   
   MIN_NUM_ROLLS = 1
   MAX_NUM_ROLLS = 5
+  
+  MIN_PLAYER_NAME_LENGTH = 1
+  MAX_PLAYER_NAME_LENGTH = 20
   
   class STATUS(Enum):
     """ Status of the current game """

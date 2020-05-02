@@ -94,9 +94,12 @@ class Controller:
   
     # load the config data from the config file
     self.configData = Controller._loadConfigFile(configFileLoc)
-
+    
+    # keep a record of the players this session
+    self.currentPlayerList = [self.configData["playerName"]]
+    
     # create a new game and GUI using the config data
-    self.game = Game(playerNameList    = [self.configData["playerName"]],
+    self.game = Game(playerNameList    = self.currentPlayerList,
                      numberOfDice      = self.configData["numberOfDice"],
                      numberOfDiceFaces = self.configData["numberOfDiceFaces"],
                      numberOfRolls     = self.configData["numberOfRolls"])
@@ -116,7 +119,11 @@ class Controller:
     self.configData = Controller._loadConfigFile(self.configFileLoc)
     
     # create a new game and tell the GUI
-    self.game = Game(playerNameList    = [self.configData["playerName"]],
+    logger.debug("newGame: players: {}".format(self.currentPlayerList))
+    logger.debug("newGame: numDice: {}".format(self.configData["numberOfDice"]))
+    logger.debug("newGame: numFaces: {}".format(self.configData["numberOfDiceFaces"]))
+    logger.debug("newGame: numRolls: {}".format(self.configData["numberOfRolls"]))
+    self.game = Game(playerNameList    = self.currentPlayerList,
                      numberOfDice      = self.configData["numberOfDice"],
                      numberOfDiceFaces = self.configData["numberOfDiceFaces"],
                      numberOfRolls     = self.configData["numberOfRolls"])
@@ -166,6 +173,57 @@ class Controller:
   def run(self):
     self.gui.run()
   
+  def addPlayer(self):
+    """ Add a new player """
+    logger.debug("addPlayer")
+    
+    # if there is already a game in progress, confirm with the user
+    if self.game.getGameStatus() == Game.STATUS.RUNNING and \
+        not self.gui.confirmAction("Adding a new player will reset the game. Continue?"):
+      return
+    
+    # current player names
+    playerNames = [x.getName() for x in self.game.getAllPlayers()]
+    
+    # get the name of the new user
+    playerName = self.gui.requestNewPlayerName(playerNames)
+    if playerName is None:
+      return
+    
+    # add the player to the current session players
+    self.currentPlayerList.append(playerName)
+    
+    # start a new game
+    self.newGame(forceNewGame=True)
+    
+
+  def editPlayer(self, playerName):
+    """ Rename or remove an existing player """
+    logger.debug("editPlayer: {}".format(playerName))
+    
+    # can't remove the player if there is only one player
+    if len(self.game.getAllPlayers()) == 1:
+      self.gui.notifyStatus("Must have at least one player", title="Can't remove player")
+      return
+    
+    # confirm removal with the user
+    #  -if game running
+    if self.game.getGameStatus() == Game.STATUS.RUNNING:
+      if not self.gui.confirmAction("Removing a player will reset the game. Continue?"):
+        return
+      
+    #  -no game running
+    else:
+      if not self.gui.confirmAction("Remove player {}?".format(playerName)):
+        return
+
+    # remove the player from the current session players
+    self.currentPlayerList.remove(playerName)
+    
+    # start a new game
+    self.newGame(forceNewGame=True)
+  
+  
   def configureDice(self):
     """ Setup the parameters for the dice """
     logger.debug("configureDice")
@@ -176,7 +234,7 @@ class Controller:
       return
     
     # get the new dice values from the user
-    newDiceValues = self.gui.showDiceSetupWindow()
+    newDiceValues = self.gui.requestDiceSetup()
     logger.debug("configureDice: new dice values: {}".format(newDiceValues))
     
     # if we get new values
@@ -258,8 +316,10 @@ class Controller:
     """ Submit a score based on the curent dice """
     logger.debug("score: {}".format(rowName))
     
+    currDiceValues = self.game.getDiceValues()
+    
     # CHECK: we can score this row
-    if not self.game.getCurrentPlayer().getScorecard().canScoreRow(rowName):
+    if not self.game.getCurrentPlayer().getScorecard().canScoreRow(rowName, currDiceValues):
       logger.debug("score: can't score {}".format(rowName))
       return
     

@@ -28,6 +28,22 @@ class GUI(object):
     """ Status notification; used or ignored, up to the GUI """
     raise NotImplementedError("subclass must implement")
   
+  def requestNewPlayerName(self, existingPlayers=None):
+    """
+    # Ask the user for the name of the new player to add
+    #  -returns new name or None
+    #
+    # existingPlayers: (list) of existing player names to exclude
+    """
+    raise NotImplementedError("subclass must implement")
+  
+  def requestDiceSetup(self):
+    """
+    # Ask the user for info on the new dice setup
+    #  -returns new values or None
+    """
+    raise NotImplementedError("subclass must implement")
+  
   def run(self):
     """ Start GUI """
     raise NotImplementedError("subclass must implement")
@@ -75,7 +91,7 @@ class PyQtGUI(GUI, QtCore.QObject):
         logger.debug("DiceSetupWindow: cancel pressed")
         
         # wipe the stored values
-        dialog.values = None
+        dialog.values = {}
         
         # close dialog
         dialog.close()
@@ -100,7 +116,7 @@ class PyQtGUI(GUI, QtCore.QObject):
         
         # store the values and exit
         logger.debug("DiceSetupWindow: user's new values: {}".format(enteredValues))
-        dialog._setValues(**enteredValues)
+        dialog.setValues(**enteredValues)
         dialog.close()
         
         # text of button
@@ -228,30 +244,7 @@ class PyQtGUI(GUI, QtCore.QObject):
         time.sleep(0.1)
         self.funcCall.emit(lambda: self.setFixedSize(self.size()))
       threading.Thread(target=fn).start()
-      
-      
-      """
-      #super(inputdialogdemo, self).__init__(parent)
-    
-      layout = QFormLayout()
-      self.btn = QPushButton("Choose from list")
-      self.btn.clicked.connect(self.getItem)
-    
-      self.le = QLineEdit()
-      layout.addRow(self.btn, self.le)
-      self.btn1 = QPushButton("get name")
-      self.btn1.clicked.connect(self.gettext)
-    
-      self.le1 = QLineEdit()
-      layout.addRow(self.btn1, self.le1)
-      self.btn2 = QPushButton("Enter an integer")
-      self.btn2.clicked.connect(self.getint)
-    
-      self.le2 = QLineEdit()
-      layout.addRow(self.btn2, self.le2)
-      self.setLayout(layout)
-      self.setWindowTitle("Input Dialog demo")
-      """
+
 
     def notify(self, text, title="Yahtzee", font=None):
       """ Display a message to the user """
@@ -304,298 +297,169 @@ class PyQtGUI(GUI, QtCore.QObject):
       return self.values if len(self.values) > 0 else None
     
     
-    def _setValues(self, numberOfDice=None, numberOfDiceFaces=None, numberOfRolls=None):
+    def setValues(self, numberOfDice=None, numberOfDiceFaces=None, numberOfRolls=None):
       """ Set one or more dice values """
       if numberOfDice      is not None: self.values["numberOfDice"]      = numberOfDice
       if numberOfRolls     is not None: self.values["numberOfRolls"]     = numberOfRolls
       if numberOfDiceFaces is not None: self.values["numberOfDiceFaces"] = numberOfDiceFaces
-      
-    
-  class DEPBoardGeneratorDialog(QtWidgets.QDialog):
-    
+
+  
+  class NewPlayerWindow(QtWidgets.QDialog):
+  
     class UserActions(object):
-      
-      @staticmethod
-      def generateButtonPressed(dialog, gui):
-        """ """
-        
-        startGenerationMsg = "Generate"
-        stopGenerationMsg = "Stop"
-        
-        buttonText = dialog.sender().text()
-        
-        # if the user wants to stop an ongoing generation
-        if buttonText == stopGenerationMsg:
-          gui.controller.stopBoardGeneration()
-          return
-        
-        # CHECK: row choice is valid
-        rows = dialog.getRowChoice()
-        if not rows.isdigit():
-          dialog.setStatus("Rows must be a number")
-          return
-        
-        # CHECK: column choice is valid
-        columns = dialog.getColumnChoice()
-        if not columns.isdigit():
-          dialog.setStatus("Columns must be a number")
-          return
-        
-        # CHECK: number of boards choice is valid
-        numBoards = dialog.getNumBoardsChoice()
-        if not numBoards.isdigit():
-          dialog.notifyStatus("Number of boards must be a number")
-          return
-        elif not (0 < int(numBoards) < 1000):
-          dialog.notifyStatus("Number of boards must be 1-999")
-          return
-        
-        # set the button text to the stop message
-        dialog.setGenerateButtonText(stopGenerationMsg)
-        
-        # generate the boards
-        dialog.setStatus("Generating...")
-        dialog.setProgress(0)
-        
-        # thread to update the progress bar
-        def monitorStatus():
-          while True:
-            
-            # get and display the progress
-            status = gui.controller.getBoardGenerationStatus()
-            progress = gui.controller.getBoardGenerationProgress()
-            dialog.funcCall.emit(lambda: dialog.setStatus(status))
-            dialog.funcCall.emit(lambda: dialog.setProgress(progress * 100))
-            
-            dialog.funcCall.emit(lambda: dialog.updateDatabaseCount())
-            
-            # exit if the generation thread has exited
-            if not generatorThread.isAlive():
-              # revert the button text to the start message
-              dialog.funcCall.emit(lambda: dialog.setGenerateButtonText(startGenerationMsg))
-              dialog.funcCall.emit(lambda: dialog.updateDatabaseCount())
-              
-              # update the database board count and notify the main window that
-              # we added new boards
-              # dialog.funcCall.emit(lambda: dialog.updateDatabaseCount())
-              gui.funcCall.emit(lambda: gui.addedNewBoards())
-              
-              dialog.funcCall.emit(lambda: dialog.setStatus(gui.controller.getBoardGenerationStatus()))
-              
-              return
-            
-            time.sleep(0.5)
-        
-        # start board generation
-        generatorThread = threading.Thread(target=gui.controller.generateBoards,
-                                           args=(int(numBoards), int(rows), int(columns)))
-        generatorThread.start()
-        
-        # create the monitoring thread
-        monitorThread = threading.Thread(target=monitorStatus)
-        monitorThread.start()
     
+      @staticmethod
+      def cancelPressed(dialog):
+        """ Called when cancel is pressed """
+        logger.debug("NewPlayerWindow: cancel pressed")
+      
+        # wipe the stored name
+        dialog.name = None
+      
+        # close dialog
+        dialog.close()
+    
+      @staticmethod
+      def okayPressed(dialog):
+        """ Called when okay is pressed """
+        logger.debug("NewPlayerWindow: okay pressed")
+        
+        # get the new name, making sure it's acceptable
+        newName = dialog.getUserEntry()
+        if newName is None:
+          return
+      
+        # store the new name and exit
+        logger.debug("NewPlayerWindow: new player name: {}".format(newName))
+        dialog.newName = newName
+        dialog.close()
+
     # call gui function from other threads
     funcCall = QtCore.pyqtSignal(object)
-    
+
     @QtCore.pyqtSlot(object)
     def remoteCall(self, func):
       """ Allows us to call GUI functions from other threads """
       func()
-    
-    def __init__(self, parent, gui):
+
+    def __init__(self, parent, existingPlayerNames, minNameLength=None, maxNameLength=None):
       super().__init__(parent)
+      
+      # name info
+      self.existingPlayerNames = existingPlayerNames
+      self.minNameLength = minNameLength
+      self.maxNameLength = maxNameLength
+    
+      # holds new, chosen name
+      self.newName = None
+      
+      # remember reference to text box
+      self.nameInput = None
       
       # update dialog from a different thread
       self.funcCall.connect(self.remoteCall)
       
-      # reference to our parent gui
-      self.gui = gui
-      
-      self.setWindowTitle("Board Generator")
+      # create the layout
+      self._createLayout()
+    
+    
+    def _createLayout(self):
+      """ Piece the layout together """
+    
+      self.setWindowTitle("Enter Player's Name")
       self.resize(1, 1)
-      
+    
       self.setModal(True)
       self.setObjectName("Dialog")
+    
+      windowLayout = QtWidgets.QVBoxLayout()
+
+      #########################################################################
+      # text entry box
+      #########################################################################
+
+      self.nameInput = QtWidgets.QLineEdit()
       
       #########################################################################
-      # from GUI designer:
+      # buttons
       #########################################################################
-      
-      verticalLayout_3 = QtWidgets.QVBoxLayout(self)
-      verticalLayout_2 = QtWidgets.QVBoxLayout()
-      horizontalWidget_2 = QtWidgets.QWidget(self)
-      horizontalLayout_3 = QtWidgets.QHBoxLayout(horizontalWidget_2)
-      horizontalWidget = QtWidgets.QWidget(horizontalWidget_2)
-      horizontalLayout = QtWidgets.QHBoxLayout(horizontalWidget)
-      spacerItem = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-      horizontalLayout.addItem(spacerItem)
-      
-      self.rowsLabel = QtWidgets.QLineEdit(horizontalWidget)
-      self.rowsLabel.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
-      horizontalLayout.addWidget(self.rowsLabel)
-      
-      label = QtWidgets.QLabel(horizontalWidget)
-      
-      horizontalLayout.addWidget(label)
-      
-      self.columnsLabel = QtWidgets.QLineEdit(horizontalWidget)
-      self.columnsLabel.setAlignment(QtCore.Qt.AlignCenter | QtCore.Qt.AlignVCenter)
-      horizontalLayout.addWidget(self.columnsLabel)
-      
-      spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-      horizontalLayout.addItem(spacerItem1)
-      verticalWidget = QtWidgets.QWidget(horizontalWidget)
-      
-      verticalLayout = QtWidgets.QVBoxLayout(verticalWidget)
-      spacerItem2 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-      verticalLayout.addItem(spacerItem2)
-      
-      label_4 = QtWidgets.QLabel(verticalWidget)
-      label_4.setAlignment(QtCore.Qt.AlignCenter)
-      verticalLayout.addWidget(label_4)
-      
-      horizontalLayout_2 = QtWidgets.QHBoxLayout()
-      spacerItem3 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-      horizontalLayout_2.addItem(spacerItem3)
-      
-      self.inDatabaseLabel = QtWidgets.QLabel(verticalWidget)
-      self.inDatabaseLabel.setStyleSheet(
-        "background: white; border-style: outset; border-width: 3px; border-color: black;")
-      self.inDatabaseLabel.setAlignment(QtCore.Qt.AlignCenter)
-      horizontalLayout_2.addWidget(self.inDatabaseLabel)
-      
-      spacerItem4 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-      horizontalLayout_2.addItem(spacerItem4)
-      verticalLayout.addLayout(horizontalLayout_2)
-      horizontalLayout.addWidget(verticalWidget)
-      spacerItem5 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-      horizontalLayout.addItem(spacerItem5)
-      horizontalLayout.setStretch(0, 1000)
-      horizontalLayout.setStretch(1, 1)
-      horizontalLayout.setStretch(2, 1)
-      horizontalLayout.setStretch(3, 1)
-      horizontalLayout.setStretch(6, 1000)
-      horizontalLayout_3.addWidget(horizontalWidget)
-      verticalLayout_2.addWidget(horizontalWidget_2)
-      spacerItem6 = QtWidgets.QSpacerItem(20, 800, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Maximum)
-      verticalLayout_2.addItem(spacerItem6)
-      line_2 = QtWidgets.QFrame(self)
-      line_2.setFrameShape(QtWidgets.QFrame.HLine)
-      line_2.setFrameShadow(QtWidgets.QFrame.Sunken)
-      verticalLayout_2.addWidget(line_2)
-      
-      self.progressBar = QtWidgets.QProgressBar(self)
-      self.progressBar.setProperty("value", 0)
-      verticalLayout_2.addWidget(self.progressBar)
-      
-      self.statusLabel = QtWidgets.QLabel(self)
-      verticalLayout_2.addWidget(self.statusLabel)
-      
-      horizontalLayout_4 = QtWidgets.QHBoxLayout()
-      spacerItem7 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-      horizontalLayout_4.addItem(spacerItem7)
-      horizontalLayout_6 = QtWidgets.QHBoxLayout()
-      
-      self.toGenerateLabel = QtWidgets.QLineEdit(self)
-      self.toGenerateLabel.setAlignment(QtCore.Qt.AlignCenter)
-      horizontalLayout_6.addWidget(self.toGenerateLabel)
-      
-      self.generateButton = QtWidgets.QPushButton(self)
-      horizontalLayout_6.addWidget(self.generateButton)
-      self.generateButton.clicked.connect(
-        lambda: PyQtGUI.BoardGeneratorDialog.UserActions.generateButtonPressed(self, self.gui))
-      
-      horizontalLayout_4.addLayout(horizontalLayout_6)
-      horizontalLayout_4.setStretch(0, 1000)
-      horizontalLayout_4.setStretch(1, 1)
-      verticalLayout_2.addLayout(horizontalLayout_4)
-      line = QtWidgets.QFrame(self)
-      line.setFrameShape(QtWidgets.QFrame.HLine)
-      line.setFrameShadow(QtWidgets.QFrame.Sunken)
-      verticalLayout_2.addWidget(line)
-      horizontalLayout_5 = QtWidgets.QHBoxLayout()
-      spacerItem8 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-      horizontalLayout_5.addItem(spacerItem8)
-      
-      self.timeElapsedLabel = QtWidgets.QLabel(self)
-      self.timeElapsedLabel.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignTrailing | QtCore.Qt.AlignVCenter)
-      horizontalLayout_5.addWidget(self.timeElapsedLabel)
-      
-      horizontalLayout_5.setStretch(0, 1000)
-      verticalLayout_2.addLayout(horizontalLayout_5)
-      verticalLayout_3.addLayout(verticalLayout_2)
-      
-      label_4.setText("In Database")
-      label.setText("X")
-      
+    
+      # okay and cancel buttons
+      cancelButton = QtWidgets.QPushButton("Cancel")
+      okayButton = QtWidgets.QPushButton("Okay")
+    
+      buttonLayout = QtWidgets.QHBoxLayout()
+      buttonLayout.addStretch(10000)
+      buttonLayout.addWidget(cancelButton)
+      buttonLayout.addWidget(okayButton)
+    
+      # connect buttons to events
+      cancelButton.clicked.connect(lambda: PyQtGUI.NewPlayerWindow.UserActions.cancelPressed(self))
+      okayButton.clicked.connect(lambda: PyQtGUI.NewPlayerWindow.UserActions.okayPressed(self))
+    
       #########################################################################
-      
-      # set row and column labels to the current board dimensions
-      self.rowsLabel.setText(str(gui.board.getBoardDimensions()[0]))
-      self.columnsLabel.setText(str(gui.board.getBoardDimensions()[1]))
-      
-      # when the row/column choice is updated, update the "in database" label
-      self.rowsLabel.textChanged.connect(self.updateDatabaseCount)
-      self.columnsLabel.textChanged.connect(self.updateDatabaseCount)
-      
-      # default values for labels
-      self.inDatabaseLabel.setText(" 0 ")
-      self.toGenerateLabel.setText("10")
-      self.timeElapsedLabel.setText("")
-      self.statusLabel.setText("")
-      
-      # generate button
-      self.generateButton.setText("Generate")
-      self.generateButton.setFocus()
-      
-      # update the "in database" label
-      self.updateDatabaseCount()
-      
-      # keep track of whether we are generating boards now
-      self.generatingBoards = False
+      # final layout assembly
+      #########################################################################
+
+      windowLayout.addStretch(1000)
+      windowLayout.addWidget(self.nameInput, 1)
+      windowLayout.addLayout(buttonLayout, 1)
     
-    def updateDatabaseCount(self):
-      """ Update the status showing the number of row x colum boards we have in the database """
-      
-      try:
-        
-        # get the rows and columns
-        rows = int(self.getRowChoice())
-        columns = int(self.getColumnChoice())
-        
-        # find the board info for this board type
-        boardsInfo = self.gui.controller.getBoardsInfo()
-        if boardsInfo and boardsInfo.get((rows, columns), False):
-          self.setInDatabaseStatus(boardsInfo[(rows, columns)]["length"])
-        else:
-          self.setInDatabaseStatus(0)
-      
-      except:
-        self.setInDatabaseStatus(0)
+      self.setLayout(windowLayout)
     
-    def setProgress(self, val):
-      self.progressBar.setValue(val)
+      # fix the window size
+      #  -need to wait for a bit so all elements can be set and sized
+      def fn():
+        time.sleep(0.1)
+        self.funcCall.emit(lambda: self.setFixedSize(self.size()))
     
-    def setStatus(self, text):
-      self.statusLabel.setText(text)
+      threading.Thread(target=fn).start()
     
-    def getRowChoice(self):
-      return self.rowsLabel.text()
     
-    def getColumnChoice(self):
-      return self.columnsLabel.text()
-    
-    def getNumBoardsChoice(self):
-      return self.toGenerateLabel.text()
-    
-    def setInDatabaseStatus(self, value):
-      if isinstance(value, int):
-        self.inDatabaseLabel.setText(" " + str(value) + " ")
-    
-    def setGenerateButtonText(self, text):
-      self.generateButton.setText(text)
+    def notify(self, text, title="Yahtzee", font=None):
+      """ Display a message to the user """
   
+      # create the info box
+      msgBox = QtWidgets.QMessageBox(self)
+      msgBox.setIcon(QtWidgets.QMessageBox.Information)
+      msgBox.setWindowTitle(title)
+      msgBox.setText(text)
+      msgBox.setStandardButtons(QtWidgets.QMessageBox.Ok)
+  
+      # set the text font
+      if font is not None:
+        msgBox.setFont(font)
+  
+      msgBox.exec()
+
+    def getUserEntry(self):
+      """ Return the new player name, or None if it's invalid """
+      
+      newName = self.nameInput.text()
+      
+      # CHECK: name is a string
+      if not isinstance(newName, str):
+        self.notify("Name is not a valid string")
+        return None
+      
+      # CHECK: length is valid
+      if not (self.minNameLength <= len(newName) <= self.maxNameLength):
+        self.notify("Name length must be between {}-{}".format(self.minNameLength, self.maxNameLength))
+        return None
+
+      # CHECK: name is unique
+      if newName in self.existingPlayerNames:
+        self.notify("Name is already in use")
+        return None
+      
+      # all good
+      return newName
+    
+    
+    def getName(self):
+      """ Return the new player name """
+      return self.newName
+    
   class UserActions(object):
     
     @staticmethod
@@ -606,6 +470,26 @@ class PyQtGUI(GUI, QtCore.QObject):
       # score for the current player
       if player == gui.game.getCurrentPlayer():
         gui.controller.score(rowName)
+
+    @staticmethod
+    def addPlayerClicked(gui):
+      """ Called whenever "add player" is clicked """
+      logger.debug("addPlayerClicked")
+      
+      # call controller
+      gui.controller.addPlayer()
+
+    @staticmethod
+    def editPlayerClicked(gui, playerName):
+      """ Called whenever we try to edit a player """
+      logger.debug("removePlayerClicked")
+
+      # text of cell
+      #name = gui.sender().text()
+      
+      # call controller
+      gui.controller.editPlayer(playerName)
+    
     
     @staticmethod
     def holdPressed(gui, diceIndex):
@@ -730,6 +614,28 @@ class PyQtGUI(GUI, QtCore.QObject):
     #  self.gameGrid[row][column].setText(value)
     
     
+    def _createPlayerNameCell(self, playerName):
+      """ Create the cell for a player's name """
+
+      # cell is a label
+      cell = QtWidgets.QLabel(playerName)
+      cell.setAlignment(QtCore.Qt.AlignCenter)
+      cell.setScaledContents(True)
+      
+      # set style
+      cell.setStyleSheet(self.gui.SCORE_STYLE_NORMAL)
+      
+      # font for cell text
+      font = QtGui.QFont()
+      font.setPointSize(12)
+      cell.setFont(font)
+
+      # can't "click" labels, so register a click with a mouse event
+      cell.mousePressEvent = lambda event: PyQtGUI.UserActions.editPlayerClicked(self.gui, playerName)
+      
+      return cell
+    
+    
     def _createLabelCell(self, contents, align=QtCore.Qt.AlignLeft):
       """ Create an individual grid cell """
 
@@ -748,6 +654,29 @@ class PyQtGUI(GUI, QtCore.QObject):
       font.setPointSize(12)
       cell.setFont(font)
 
+      return cell
+    
+    
+    def _createAddPlayerCell(self):
+      """ Create the "add player" button-cell """
+
+      # cell is a label
+      cell = QtWidgets.QLabel("+")
+      cell.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignHCenter)
+      cell.setScaledContents(True)
+      
+      # set style
+      cell.setStyleSheet(self.gui.ADD_PLAYER_CELL_STYLE)
+      
+      # font for cell text
+      font = QtGui.QFont()
+      font.setPointSize(14)
+      font.setBold(True)
+      cell.setFont(font)
+
+      # can't "click" labels, so register a click with a mouse event
+      cell.mousePressEvent = lambda event: PyQtGUI.UserActions.addPlayerClicked(self.gui)
+      
       return cell
     
     
@@ -841,11 +770,15 @@ class PyQtGUI(GUI, QtCore.QObject):
       # populate player names row
       playerNameCells = {}
       for iPlayer, player in enumerate(players):
-        nameCell = self._createLabelCell(player.getName(), align=QtCore.Qt.AlignCenter)
-        gridLayout.addWidget(nameCell, 0, iPlayer + 1)
+        nameCell = self._createPlayerNameCell(player.getName())
+        gridLayout.addWidget(nameCell, 0, iPlayer + 1)#, alignment=QtCore.Qt.AlignCenter)
         
         # remember the cell for this player's name
         playerNameCells[player.getName()] = nameCell
+      
+      # add the "add player" button-cell
+      addPlayerCell = self._createAddPlayerCell()
+      gridLayout.addWidget(addPlayerCell, 0, len(playerNameCells)+1)
       
       # create empty score cells
       scoreCells = {}
@@ -1106,7 +1039,31 @@ class PyQtGUI(GUI, QtCore.QObject):
       
       
       return probCells, gridLayout
-    
+  
+    @staticmethod
+    def resizeScorecard(scorecardLayout):
+      """ Dynamically resize the scorecard so the name columns are consistent """
+      
+      # minimum width on each side of the name
+      widthBorder = 4
+      
+      # assemble the list of widgets in the player name row
+      nameWidgetList = []
+      while True:
+        element = scorecardLayout.itemAtPosition(0, len(nameWidgetList)+1)
+        if element is None:
+          break
+        else:
+          nameWidgetList.append(element.widget())
+      
+      # drop the last widget as it's the "add player" cell
+      nameWidgetList = nameWidgetList[:-1]
+      
+      # set all widgets to the same width as the widest widget
+      maxWidth = max([x.width() for x in nameWidgetList])
+      for widget in nameWidgetList:
+        widget.setMinimumWidth(maxWidth + widthBorder*2)
+
   
   # call gui function from other threads
   funcCall = QtCore.pyqtSignal(object)
@@ -1132,7 +1089,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     
     
     ###########################################################################
-    # define stylesheets for text and the game cells
+    # define stylesheets for GUI elements and text
     ###########################################################################
     
     # text styles
@@ -1144,6 +1101,9 @@ class PyQtGUI(GUI, QtCore.QObject):
     defaultNameStyle = "border-style: outset; border-width: 1px; border-color: black; "
     self.PLAYER_NAME_INACTIVE = defaultNameStyle + " color: black; background: white; "
     self.PLAYER_NAME_ACTIVE   = defaultNameStyle + " color: black; background: aquamarine; "
+    
+    # add player button-cell
+    self.ADD_PLAYER_CELL_STYLE = "border-style: solid; border-width: 1px; border-color: black; background: white; "
     
     # score styles
     defaultScoreStyle = "border-style: outset; border-width: 1px; border-color: black; "
@@ -1174,9 +1134,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     
     # hold label
     defaultDicedStyle = "border-style: outset; "
-    #self.DICE_IMAGE_FREE = defaultDicedStyle + " background: white; "
     self.DICE_LABEL_FREE = defaultDicedStyle + " background: white; "
-    #self.DICE_IMAGE_HELD = defaultDicedStyle + " background: lightskyblue; "
     self.DICE_LABEL_HELD = defaultDicedStyle + " background: lightskyblue; "
     
     """
@@ -1194,21 +1152,7 @@ class PyQtGUI(GUI, QtCore.QObject):
     # invalid group styles
     self.CELL_STYLE_INVALID = defaultScoreStyle + "background: crimson;"
     """
-    
-    ###########################################################################
-    # define keys
-    ###########################################################################
-    
-    # backspace and delete
-    self.DELETE_KEY_LIST = [16777219, 16777223]
-    
-    # 1 to 9
-    self.NUMBER_KEY_LIST = list(range(49, 58))
-    
-    # 87: w
-    # 65: a
-    # 83: s
-    # 68: d
+
     
     ###########################################################################
     # create the GUI
@@ -1220,12 +1164,6 @@ class PyQtGUI(GUI, QtCore.QObject):
     self.mainWindow = QtWidgets.QWidget()
     self.mainWindow.setWindowTitle("Yahtzee")
     
-    # register function for keyboard presses
-    self.mainWindow.keyPressEvent = lambda event: PyQtGUI.UserActions.keyPressed(self, event)
-    
-    #self.appCreator = PyQtGUI.LayoutCreator(self, self.mainWindow)
-    #self.appCreator.setlayout(self.game)
-    
     # GUI elements we want to be able to update
     self.mainLayout       = None
     self.rollButton       = None
@@ -1235,18 +1173,8 @@ class PyQtGUI(GUI, QtCore.QObject):
     self.scoreCells       = None
     self.statusText       = None
     
+    # create the GUI elements
     self.createLayout()
-    
-    # get links into elements we want to be able to change
-    #self._getGameGrid = self.appCreator.getGameGrid
-    #self._setStatusText = self.appCreator.setStatusText
-
-    # self.notifyStatus = self.appCreator.setStatusText
-    
-    ###########################################################################
-    
-    # set and display the board
-    #self.displayNewBoard(board)
   
   
   def createLayout(self):
@@ -1288,26 +1216,22 @@ class PyQtGUI(GUI, QtCore.QObject):
     menuLayout = appCreator.createMenuBar()
     self.mainLayout.insertLayout(0, menuLayout, 1)
 
-    
-    
-    # left side:
-    #  -top: probability grid
-    #  -bot: roll box
-
-    
-    leftLayout  = QtWidgets.QVBoxLayout()
-    
-  
     # probability grid
     logger.debug("Creating layout: probability grid")
     self.probabilityCells, probGridLayout = appCreator.createProbabilityGrid(self.game.getAllPlayers(),
                                                                              self.game.getNumberOfDiceFaces())
-  
     # roll box
     logger.debug("Creating layout: roll box")
     self.rollButton, self.displayDice, rollBoxLayout = appCreator.createRollBox(self.game.getNumberOfDice())
-    #mainLayout.insertLayout(2, rollBoxLayout, 1)
-
+   
+    # scorecard
+    logger.debug("Creating layout: scorecard")
+    self.playerNameCells, self.scoreCells, scorecardLayout = appCreator.createScorecard(self.game.getAllPlayers())
+   
+    # left side:
+    #  -top: probability grid
+    #  -bot: roll box
+    leftLayout  = QtWidgets.QVBoxLayout()
     leftLayout.insertLayout(0, probGridLayout, 1)
     leftLayout.insertStretch(1, 10000)
     leftLayout.insertLayout(2, rollBoxLayout, 1)
@@ -1315,25 +1239,32 @@ class PyQtGUI(GUI, QtCore.QObject):
     # right side:
     #  -full: scorecard
     rightLayout = QtWidgets.QVBoxLayout()
-    
-    # scorecard
-    logger.debug("Creating layout: scorecard")
-    self.playerNameCells, self.scoreCells, scorecardLayout = appCreator.createScorecard(self.game.getAllPlayers())
-    #mainLayout.insertLayout(1, scorecardLayout, 1)
-
     rightLayout.insertLayout(0, scorecardLayout, 100)
     
-
+    # game-table elements
+    #  -left stuff on left, right on right
+    #  -make it a widget so we can style it
     tableLayout = QtWidgets.QHBoxLayout()
     tableLayout.insertLayout(0, leftLayout, 100)
     tableLayout.insertLayout(1, rightLayout, 1)
-
+    #
     tableWidget = QtWidgets.QWidget()
     tableWidget.setLayout(tableLayout)
     tableWidget.setStyleSheet(self.TABLE_STYLE)
     
-    #mainLayout.insertLayout(1, tableLayout, 100)
+    
     self.mainLayout.insertWidget(1, tableWidget, 100)
+    
+    
+    #appCreator.resizeScorecard(scorecardLayout)
+
+    # resize the window elements after they have been displayed
+    #  -need to wait for a bit so all elements can be set and sized
+    def fn():
+      time.sleep(0.1)
+      self.funcCall.emit(lambda: PyQtGUI.LayoutCreator.resizeScorecard(scorecardLayout))
+      
+    threading.Thread(target=fn).start()
     
     
     
@@ -1406,14 +1337,6 @@ class PyQtGUI(GUI, QtCore.QObject):
       holdLabel.setStyleSheet(self.DICE_LABEL_FREE)
       holdLabel.setText("-")
   
-  
-  def DEP_updatePlayerNameCell(self, cell, isActivePlayer):
-    """ Highlight player name """
-    if isActivePlayer:
-      cell.setStyleSheet(self.PLAYER_NAME_ACTIVE)
-    else:
-      cell.setStyleSheet(self.PLAYER_NAME_INACTIVE)
-
     
   def _updateRollButton(self, text):
     """ Set the text in on the roll button """
@@ -1646,8 +1569,31 @@ class PyQtGUI(GUI, QtCore.QObject):
     sys.exit(self.app.exec_())
   
 
-  def showDiceSetupWindow(self):
-    """ Show the window for configuring the dice, returning any new values """
+  def requestNewPlayerName(self, existingPlayers=None):
+    """
+    # Ask the user for the name of the new player to add
+    #  -returns new name or None
+    #
+    # existingPlayers: (list) of existing player names to exclude
+    """
+
+    # create the new player name window
+    newPlayerWindow = PyQtGUI.NewPlayerWindow(self.mainWindow,
+                                              existingPlayerNames=existingPlayers,
+                                              minNameLength=self.game.MIN_PLAYER_NAME_LENGTH,
+                                              maxNameLength=self.game.MAX_PLAYER_NAME_LENGTH)
+
+    # display the window and get the new name, if any
+    newPlayerWindow.exec()
+    return newPlayerWindow.getName()
+
+  def requestDiceSetup(self):
+    """
+    # Ask the user for info on the new dice setup
+    #  -returns new values or None
+    #
+    # Show the window for configuring the dice
+    """
     
     # assemble the current dice info
     numberOfDiceInfo = {
