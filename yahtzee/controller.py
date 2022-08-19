@@ -12,8 +12,8 @@ import numpy as np
 
 from concurrent import futures
 
-from yahtzee.model import Game
-from yahtzee.gui import PyQtGUI
+from model import Game
+from gui import PyQtGUI
 
 
 class Controller:
